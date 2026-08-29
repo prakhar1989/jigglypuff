@@ -103,7 +103,7 @@ public struct SettingsView: View {
                     }
                 }
 
-                Text("Which microphone Transrib listens to. Applies when the next recording starts.")
+                Text("Which microphone Jiggypuff listens to. Applies when the next recording starts.")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
@@ -231,7 +231,7 @@ public struct SettingsView: View {
                     .frame(height: 180)
                     .border(Color.secondary.opacity(0.2), width: 1)
 
-                Text("Example: Transrib, Wispr Flow, Kubernetes, PyTorch, SwiftUI, GraphQL")
+                Text("Example: Jiggypuff, Wispr Flow, Kubernetes, PyTorch, SwiftUI, GraphQL")
                     .font(.caption2)
                     .foregroundColor(.secondary)
             }

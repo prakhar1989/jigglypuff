@@ -2,19 +2,19 @@
 import PackageDescription
 
 let package = Package(
-    name: "Transrib",
+    name: "Jiggypuff",
     platforms: [
         .macOS(.v14)
     ],
     products: [
-        .executable(name: "Transrib", targets: ["Transrib"])
+        .executable(name: "Jiggypuff", targets: ["Jiggypuff"])
     ],
     dependencies: [],
     targets: [
         .executableTarget(
-            name: "Transrib",
+            name: "Jiggypuff",
             dependencies: [],
-            path: "Sources/Transrib"
+            path: "Sources/Jiggypuff"
         )
     ]
 )

@@ -9,13 +9,13 @@ cd "$PROJECT_ROOT"
 echo "🎙️ Generating Xcode Project with XcodeGen..."
 xcodegen generate
 
-echo "🔨 Building Transrib.app in Release configuration..."
+echo "🔨 Building Jiggypuff.app in Release configuration..."
 BUILD_DIR="$PROJECT_ROOT/build"
 rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR"
 
-xcodebuild -project Transrib.xcodeproj \
-           -scheme Transrib \
+xcodebuild -project Jiggypuff.xcodeproj \
+           -scheme Jiggypuff \
            -configuration Release \
            -derivedDataPath "$BUILD_DIR/DerivedData" \
            build \
@@ -23,18 +23,18 @@ xcodebuild -project Transrib.xcodeproj \
            CODE_SIGNING_REQUIRED=NO \
            CODE_SIGNING_ALLOWED=YES
 
-APP_PATH="$BUILD_DIR/DerivedData/Build/Products/Release/Transrib.app"
+APP_PATH="$BUILD_DIR/DerivedData/Build/Products/Release/Jiggypuff.app"
 
 if [ -d "$APP_PATH" ]; then
-    cp -R "$APP_PATH" "$BUILD_DIR/Transrib.app"
-    echo "✨ Successfully built Transrib.app!"
-    echo "📍 App bundle located at: $BUILD_DIR/Transrib.app"
+    cp -R "$APP_PATH" "$BUILD_DIR/Jiggypuff.app"
+    echo "✨ Successfully built Jiggypuff.app!"
+    echo "📍 App bundle located at: $BUILD_DIR/Jiggypuff.app"
     echo ""
-    echo "To launch Transrib, run:"
-    echo "  open $BUILD_DIR/Transrib.app"
+    echo "To launch Jiggypuff, run:"
+    echo "  open $BUILD_DIR/Jiggypuff.app"
     echo ""
     echo "Or copy to Applications folder:"
-    echo "  cp -R $BUILD_DIR/Transrib.app /Applications/"
+    echo "  cp -R $BUILD_DIR/Jiggypuff.app /Applications/"
 else
     echo "❌ Build failed. App bundle not found."
     exit 1

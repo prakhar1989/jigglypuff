@@ -106,7 +106,7 @@ public final class GeminiTranscribeService: Sendable {
         startRequest.setValue("\(audioData.count)", forHTTPHeaderField: "X-Goog-Upload-Header-Content-Length")
         startRequest.setValue("audio/wav", forHTTPHeaderField: "X-Goog-Upload-Header-Content-Type")
         startRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        startRequest.httpBody = try JSONSerialization.data(withJSONObject: ["file": ["display_name": "transrib-dictation"]])
+        startRequest.httpBody = try JSONSerialization.data(withJSONObject: ["file": ["display_name": "jiggypuff-dictation"]])
 
         let (_, startResponse) = try await URLSession.shared.data(for: startRequest)
         guard let startHTTP = startResponse as? HTTPURLResponse,

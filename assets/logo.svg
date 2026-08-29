@@ -1,0 +1,152 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <!-- Background Gradients -->
+    <radialGradient id="bgGrad" cx="50%" cy="30%" r="70%">
+      <stop offset="0%" stop-color="#1e1e2e"/>
+      <stop offset="100%" stop-color="#0f0f17"/>
+    </radialGradient>
+    
+    <linearGradient id="glassBorder" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.25"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0.05"/>
+    </linearGradient>
+
+    <!-- Character Gradients -->
+    <radialGradient id="puffBody" cx="38%" cy="32%" r="65%">
+      <stop offset="0%" stop-color="#ffcce6"/>
+      <stop offset="45%" stop-color="#ff99cc"/>
+      <stop offset="85%" stop-color="#f06292"/>
+      <stop offset="100%" stop-color="#d81b60"/>
+    </radialGradient>
+
+    <radialGradient id="earInner" cx="40%" cy="30%" r="60%">
+      <stop offset="0%" stop-color="#880e4f"/>
+      <stop offset="100%" stop-color="#4a0024"/>
+    </radialGradient>
+
+    <!-- Eye Gradients -->
+    <radialGradient id="eyeGrad" cx="45%" cy="35%" r="60%">
+      <stop offset="0%" stop-color="#00e5ff"/>
+      <stop offset="40%" stop-color="#00b4d8"/>
+      <stop offset="80%" stop-color="#0077b6"/>
+      <stop offset="100%" stop-color="#03045e"/>
+    </radialGradient>
+
+    <!-- Mic Gradients -->
+    <linearGradient id="micMetal" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="30%" stop-color="#e0e0e0"/>
+      <stop offset="70%" stop-color="#9e9e9e"/>
+      <stop offset="100%" stop-color="#616161"/>
+    </linearGradient>
+
+    <linearGradient id="micGrille" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#424242"/>
+      <stop offset="50%" stop-color="#212121"/>
+      <stop offset="100%" stop-color="#111111"/>
+    </linearGradient>
+
+    <!-- Glow Effects -->
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+
+    <filter id="dropShadow" x="-10%" y="-10%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#000000" flood-opacity="0.45"/>
+    </filter>
+  </defs>
+
+  <!-- Squircle App Container -->
+  <rect x="24" y="24" width="464" height="464" rx="104" fill="url(#bgGrad)" filter="url(#dropShadow)"/>
+  <rect x="24" y="24" width="464" height="464" rx="104" fill="none" stroke="url(#glassBorder)" stroke-width="3"/>
+
+  <!-- Ambient Sound Waves / Musical Energy -->
+  <g opacity="0.85" filter="url(#glow)">
+    <!-- Wave bars -->
+    <path d="M 330 200 C 370 170, 420 180, 460 140" stroke="#f472b6" stroke-width="4" stroke-linecap="round" fill="none"/>
+    <path d="M 340 225 C 385 205, 430 220, 470 180" stroke="#38bdf8" stroke-width="3.5" stroke-linecap="round" fill="none"/>
+    <path d="M 345 250 C 390 240, 435 260, 465 220" stroke="#a78bfa" stroke-width="3" stroke-linecap="round" fill="none"/>
+    
+    <!-- Floating Sparkles / Notes -->
+    <polygon points="440,110 443,119 452,122 443,125 440,134 437,125 428,122 437,119" fill="#fef08a"/>
+    <polygon points="410,85 412,91 418,93 412,95 410,101 408,95 402,93 408,91" fill="#67e8f9"/>
+    <polygon points="460,250 462,255 467,257 462,259 460,264 458,259 453,257 458,255" fill="#f472b6"/>
+  </g>
+
+  <!-- Jiggypuff Group -->
+  <g id="character" filter="url(#dropShadow)">
+    <!-- Left Ear -->
+    <path d="M 130 175 Q 115 105 160 90 Q 185 115 195 160 Z" fill="url(#puffBody)"/>
+    <path d="M 140 165 Q 130 115 160 105 Q 175 125 182 155 Z" fill="url(#earInner)"/>
+
+    <!-- Right Ear -->
+    <path d="M 285 155 Q 315 85 350 110 Q 340 145 320 180 Z" fill="url(#puffBody)"/>
+    <path d="M 295 150 Q 320 100 342 120 Q 332 145 315 170 Z" fill="url(#earInner)"/>
+
+    <!-- Little Feet -->
+    <ellipse cx="180" cy="385" rx="26" ry="18" fill="#f06292" transform="rotate(-15 180 385)"/>
+    <ellipse cx="280" cy="385" rx="26" ry="18" fill="#f06292" transform="rotate(15 280 385)"/>
+
+    <!-- Body (Sphere) -->
+    <circle cx="230" cy="270" r="130" fill="url(#puffBody)"/>
+
+    <!-- Hair Tuft / Swirl -->
+    <path d="M 215 150 C 170 145, 175 210, 225 215 C 265 218, 280 180, 250 155 C 235 140, 225 145, 215 150 Z" fill="url(#puffBody)"/>
+    <path d="M 222 175 C 205 172, 205 198, 225 200 C 242 201, 250 188, 238 178 Z" fill="#ffb6d9" opacity="0.6"/>
+
+    <!-- Left Arm -->
+    <ellipse cx="120" cy="290" rx="24" ry="16" fill="#f06292" transform="rotate(-25 120 290)"/>
+
+    <!-- Big Cute Anime Eyes -->
+    <!-- Left Eye -->
+    <g id="leftEye">
+      <ellipse cx="180" cy="250" rx="28" ry="32" fill="#ffffff"/>
+      <ellipse cx="184" cy="250" rx="24" ry="28" fill="url(#eyeGrad)"/>
+      <ellipse cx="184" cy="252" rx="14" ry="17" fill="#021526"/>
+      <!-- Highlights -->
+      <circle cx="177" cy="238" r="8" fill="#ffffff"/>
+      <circle cx="193" cy="258" r="4" fill="#ffffff"/>
+    </g>
+
+    <!-- Right Eye -->
+    <g id="rightEye">
+      <ellipse cx="272" cy="245" rx="28" ry="32" fill="#ffffff"/>
+      <ellipse cx="276" cy="245" rx="24" ry="28" fill="url(#eyeGrad)"/>
+      <ellipse cx="276" cy="247" rx="14" ry="17" fill="#021526"/>
+      <!-- Highlights -->
+      <circle cx="269" cy="233" r="8" fill="#ffffff"/>
+      <circle cx="285" cy="253" r="4" fill="#ffffff"/>
+    </g>
+
+    <!-- Cute Blush Cheeks -->
+    <ellipse cx="140" cy="290" rx="14" ry="9" fill="#ff4081" opacity="0.45"/>
+    <ellipse cx="305" cy="285" rx="14" ry="9" fill="#ff4081" opacity="0.45"/>
+
+    <!-- Singing Open Mouth -->
+    <path d="M 220 282 Q 228 315 238 282 Z" fill="#b71c1c"/>
+    <path d="M 223 294 Q 228 312 235 294 Z" fill="#ff80ab"/>
+
+    <!-- Right Arm holding Mic -->
+    <ellipse cx="310" cy="305" rx="22" ry="16" fill="#f06292" transform="rotate(35 310 305)"/>
+  </g>
+
+  <!-- Vintage Microphone -->
+  <g id="microphone" filter="url(#dropShadow)">
+    <!-- Mic Stand / Base Handle -->
+    <path d="M 335 320 L 355 365 L 340 372 L 320 327 Z" fill="url(#micMetal)"/>
+    
+    <!-- Mic Body -->
+    <rect x="330" y="260" width="34" height="55" rx="17" fill="url(#micMetal)" transform="rotate(25 347 287)"/>
+    
+    <!-- Grille Mesh & Band -->
+    <rect x="333" y="263" width="28" height="30" rx="14" fill="url(#micGrille)" transform="rotate(25 347 287)"/>
+    <line x1="334" y1="278" x2="360" y2="290" stroke="url(#micMetal)" stroke-width="2.5"/>
+    
+    <!-- Glowing LED Accent on Mic -->
+    <circle cx="347" cy="310" r="3.5" fill="#00e5ff" filter="url(#glow)"/>
+    
+    <!-- Mic Cable -->
+    <path d="M 348 370 C 360 410, 310 440, 270 435" stroke="#374151" stroke-width="4" stroke-linecap="round" fill="none"/>
+  </g>
+</svg>

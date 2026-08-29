@@ -23,7 +23,7 @@ public struct MenuBarView: View {
             // Header: Status & Quick Action
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Transrib")
+                    Text("Jiggypuff")
                         .font(.headline)
                     Text(statusSubtitle)
                         .font(.caption)

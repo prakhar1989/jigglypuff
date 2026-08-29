@@ -24,7 +24,7 @@ public final class MenuBarController: NSObject {
         self.statusItem = item
 
         if let button = item.button {
-            button.image = NSImage(systemSymbolName: "waveform", accessibilityDescription: "Transrib")
+            button.image = NSImage(systemSymbolName: "waveform", accessibilityDescription: "Jiggypuff")
             button.imagePosition = .imageLeft
             button.target = self
             button.action = #selector(togglePopover)
@@ -65,7 +65,7 @@ public final class MenuBarController: NSObject {
 
         switch state {
         case .idle:
-            button.image = NSImage(systemSymbolName: "waveform", accessibilityDescription: "Transrib")
+            button.image = NSImage(systemSymbolName: "waveform", accessibilityDescription: "Jiggypuff")
             button.title = ""
         case .recording:
             let config = NSImage.SymbolConfiguration(paletteColors: [.systemRed])
@@ -115,7 +115,7 @@ public final class MenuBarController: NSObject {
         let settingsView = SettingsView()
         let hostingController = NSHostingController(rootView: settingsView)
         let window = NSWindow(contentViewController: hostingController)
-        window.title = "Transrib Settings"
+        window.title = "Jiggypuff Settings"
         window.styleMask = [.titled, .closable, .miniaturizable]
         window.setContentSize(NSSize(width: 540, height: 480))
         window.center()

@@ -5,13 +5,13 @@
     <key>CFBundleDevelopmentRegion</key>
     <string>en</string>
     <key>CFBundleExecutable</key>
-    <string>Transrib</string>
+    <string>Jiggypuff</string>
     <key>CFBundleIdentifier</key>
-    <string>com.transrib.app</string>
+    <string>com.jiggypuff.app</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
-    <string>Transrib</string>
+    <string>Jiggypuff</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
@@ -23,7 +23,7 @@
     <key>LSUIElement</key>
     <true/>
     <key>NSMicrophoneUsageDescription</key>
-    <string>Transrib requires microphone access to record speech and transcribe it with Gemini 3.5 Transcribe.</string>
+    <string>Jiggypuff requires microphone access to record speech and transcribe it with Gemini 3.5 Transcribe.</string>
     <key>NSSupportsAutomaticGraphicsSwitching</key>
     <true/>
     <key>NSHighResolutionCapable</key>

@@ -4,7 +4,7 @@ import Security
 /// Helper to securely store and retrieve sensitive credentials like the Gemini API Key in macOS Keychain.
 public final class KeychainHelper: Sendable {
     public static let shared = KeychainHelper()
-    private let service = "com.transrib.app"
+    private let service = "com.jiggypuff.app"
     private let apiKeyAccount = "GeminiAPIKey"
 
     private init() {}

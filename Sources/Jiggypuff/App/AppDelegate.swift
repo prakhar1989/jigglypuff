@@ -17,7 +17,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         // Pre-warm audio and hotkey systems
         _ = AppState.shared
 
-        print("Transrib initialized successfully.")
+        print("Jiggypuff initialized successfully.")
     }
 
     public func applicationWillTerminate(_ notification: Notification) {
