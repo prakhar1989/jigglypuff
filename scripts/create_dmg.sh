@@ -26,6 +26,7 @@ if command -v create-dmg &> /dev/null; then
     echo "✨ Using 'create-dmg' for styled DMG layout..."
     create-dmg \
       --volname "Jiggypuff Installer" \
+      --volicon "Resources/AppIcon.icns" \
       --window-pos 200 120 \
       --window-size 600 400 \
       --icon-size 128 \
@@ -46,6 +47,13 @@ if [ ! -f "$DMG_PATH" ]; then
     
     cp -R "$APP_PATH" "$STAGING_DIR/"
     ln -s /Applications "$STAGING_DIR/Applications"
+    
+    if [ -f "Resources/AppIcon.icns" ]; then
+        cp "Resources/AppIcon.icns" "$STAGING_DIR/.VolumeIcon.icns"
+        if command -v SetFile &> /dev/null; then
+            SetFile -a C "$STAGING_DIR" || true
+        fi
+    fi
     
     hdiutil create \
       -volname "Jiggypuff Installer" \
