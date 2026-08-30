@@ -51,32 +51,49 @@ Running quietly in the background as a menu bar app, Jiggypuff is always ready. 
 
 ---
 
-## 🚀 Quick Start & Building
+## 🚀 Installation & Quick Start
 
-### Prerequisites
+### Option 1: Download Pre-built DMG (Recommended)
+
+1. Download the latest **`Jiggypuff.dmg`** from [GitHub Releases](https://github.com/prakhar1989/Transcrib/releases).
+2. Open `Jiggypuff.dmg` and drag **Jiggypuff** into your **Applications** folder.
+3. **First-Time Launch (macOS Gatekeeper)**:
+   - Since Jiggypuff is free, open-source, and distributed without a paid Apple Developer certificate, macOS may show a warning: *"Jiggypuff cannot be opened because Apple cannot check it for malicious software"*.
+   - **To open**: Right-click (or Control-click) `Jiggypuff.app` in your Applications folder and select **Open** → click **Open** again.
+   - *Alternative*: Run this one-line command in Terminal:
+     ```bash
+     xattr -cr /Applications/Jiggypuff.app
+     ```
+
+---
+
+### Option 2: Build from Source
+
+#### Prerequisites
 - macOS 14.0 (Sonoma) or later
 - Xcode 15+ / Swift 6.0+
 - [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`)
 - A Google Gemini API Key from [Google AI Studio](https://aistudio.google.com/app/apikey)
 
-### Build & Run
-
-1. **Clone or Navigate to the directory**:
+#### Build & Run
+1. **Clone the repository**:
    ```bash
-   cd /Users/prakhar/Code/transrib
+   git clone https://github.com/prakhar1989/Transcrib.git
+   cd Transcrib
    ```
 
 2. **Build the `.app` bundle**:
    ```bash
    ./scripts/build_app.sh
-   ```
-
-3. **Launch Jiggypuff**:
-   ```bash
    open build/Jiggypuff.app
    ```
 
-4. **Or open and build with Xcode**:
+3. **Or package a `.dmg` installer**:
+   ```bash
+   ./scripts/create_dmg.sh
+   ```
+
+4. **Or open in Xcode**:
    ```bash
    xcodegen generate
    open Jiggypuff.xcodeproj

@@ -1,0 +1,35 @@
+name: Release DMG
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build & Release macOS DMG
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: |
+          brew install xcodegen create-dmg
+
+      - name: Build and Package DMG
+        run: |
+          chmod +x scripts/build_app.sh scripts/create_dmg.sh
+          ./scripts/create_dmg.sh
+
+      - name: Create GitHub Release & Upload DMG
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/Jiggypuff.dmg
+          generate_release_notes: true
+          draft: false
+          prerelease: false
