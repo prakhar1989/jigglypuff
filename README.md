@@ -55,7 +55,7 @@ Running quietly in the background as a menu bar app, Jiggypuff is always ready. 
 
 ### Option 1: Download Pre-built DMG (Recommended)
 
-1. Download the latest **`Jiggypuff.dmg`** from [GitHub Releases](https://github.com/prakhar1989/Transcrib/releases).
+1. Download the latest **`Jiggypuff.dmg`** from [GitHub Releases](https://github.com/prakhar1989/jigglypuff/releases).
 2. Open `Jiggypuff.dmg` and drag **Jiggypuff** into your **Applications** folder.
 3. **First-Time Launch (macOS Gatekeeper)**:
    - Since Jiggypuff is free, open-source, and distributed without a paid Apple Developer certificate, macOS may show a warning: *"Jiggypuff cannot be opened because Apple cannot check it for malicious software"*.
@@ -78,8 +78,8 @@ Running quietly in the background as a menu bar app, Jiggypuff is always ready. 
 #### Build & Run
 1. **Clone the repository**:
    ```bash
-   git clone https://github.com/prakhar1989/Transcrib.git
-   cd Transcrib
+   git clone https://github.com/prakhar1989/jigglypuff.git
+   cd jigglypuff
    ```
 
 2. **Build the `.app` bundle**:
