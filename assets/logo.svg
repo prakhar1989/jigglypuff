@@ -74,7 +74,7 @@
     <polygon points="460,250 462,255 467,257 462,259 460,264 458,259 453,257 458,255" fill="#f472b6"/>
   </g>
 
-  <!-- Jiggypuff Group -->
+  <!-- Jigglypuff Group -->
   <g id="character" filter="url(#dropShadow)">
     <!-- Left Ear -->
     <path d="M 130 175 Q 115 105 160 90 Q 185 115 195 160 Z" fill="url(#puffBody)"/>

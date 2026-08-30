@@ -9,7 +9,7 @@ cd "$PROJECT_ROOT"
 echo "🎙️ Generating Xcode Project with XcodeGen..."
 xcodegen generate
 
-echo "🔨 Building Jiggypuff.app in Release configuration..."
+echo "🔨 Building Jigglypuff.app in Release configuration..."
 BUILD_DIR="$PROJECT_ROOT/build"
 rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR"
@@ -28,25 +28,25 @@ else
     SIGN_SETTINGS=(CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=YES)
 fi
 
-xcodebuild -project Jiggypuff.xcodeproj \
-           -scheme Jiggypuff \
+xcodebuild -project Jigglypuff.xcodeproj \
+           -scheme Jigglypuff \
            -configuration Release \
            -derivedDataPath "$BUILD_DIR/DerivedData" \
            build \
            "${SIGN_SETTINGS[@]}"
 
-APP_PATH="$BUILD_DIR/DerivedData/Build/Products/Release/Jiggypuff.app"
+APP_PATH="$BUILD_DIR/DerivedData/Build/Products/Release/Jigglypuff.app"
 
 if [ -d "$APP_PATH" ]; then
-    cp -R "$APP_PATH" "$BUILD_DIR/Jiggypuff.app"
-    echo "✨ Successfully built Jiggypuff.app!"
-    echo "📍 App bundle located at: $BUILD_DIR/Jiggypuff.app"
+    cp -R "$APP_PATH" "$BUILD_DIR/Jigglypuff.app"
+    echo "✨ Successfully built Jigglypuff.app!"
+    echo "📍 App bundle located at: $BUILD_DIR/Jigglypuff.app"
     echo ""
-    echo "To launch Jiggypuff, run:"
-    echo "  open $BUILD_DIR/Jiggypuff.app"
+    echo "To launch Jigglypuff, run:"
+    echo "  open $BUILD_DIR/Jigglypuff.app"
     echo ""
     echo "Or copy to Applications folder:"
-    echo "  cp -R $BUILD_DIR/Jiggypuff.app /Applications/"
+    echo "  cp -R $BUILD_DIR/Jigglypuff.app /Applications/"
 else
     echo "❌ Build failed. App bundle not found."
     exit 1

@@ -7,31 +7,31 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$PROJECT_ROOT"
 
 BUILD_DIR="$PROJECT_ROOT/build"
-APP_PATH="$BUILD_DIR/Jiggypuff.app"
-DMG_PATH="$BUILD_DIR/Jiggypuff.dmg"
+APP_PATH="$BUILD_DIR/Jigglypuff.app"
+DMG_PATH="$BUILD_DIR/Jigglypuff.dmg"
 
 # 1. Build the app bundle if it doesn't exist or force rebuild
 echo "🚀 Ensuring release build is up-to-date..."
 ./scripts/build_app.sh
 
 if [ ! -d "$APP_PATH" ]; then
-    echo "❌ Jiggypuff.app not found in $BUILD_DIR"
+    echo "❌ Jigglypuff.app not found in $BUILD_DIR"
     exit 1
 fi
 
-echo "📦 Packaging Jiggypuff into DMG installer..."
+echo "📦 Packaging Jigglypuff into DMG installer..."
 rm -f "$DMG_PATH"
 
 if command -v create-dmg &> /dev/null; then
     echo "✨ Using 'create-dmg' for styled DMG layout..."
     create-dmg \
-      --volname "Jiggypuff Installer" \
+      --volname "Jigglypuff Installer" \
       --volicon "Resources/AppIcon.icns" \
       --window-pos 200 120 \
       --window-size 600 400 \
       --icon-size 128 \
-      --icon "Jiggypuff.app" 150 190 \
-      --hide-extension "Jiggypuff.app" \
+      --icon "Jigglypuff.app" 150 190 \
+      --hide-extension "Jigglypuff.app" \
       --app-drop-link 450 190 \
       --no-internet-enable \
       "$DMG_PATH" \
@@ -56,7 +56,7 @@ if [ ! -f "$DMG_PATH" ]; then
     fi
     
     hdiutil create \
-      -volname "Jiggypuff Installer" \
+      -volname "Jigglypuff Installer" \
       -srcfolder "$STAGING_DIR" \
       -ov \
       -format UDZO \

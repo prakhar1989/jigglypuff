@@ -60,7 +60,7 @@ public final class AudioRecorder: ObservableObject {
 
         let inputFormat = input.inputFormat(forBus: 0)
         guard inputFormat.sampleRate > 0 else {
-            throw NSError(domain: "JiggypuffAudio", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid audio input format."])
+            throw NSError(domain: "JigglypuffAudio", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid audio input format."])
         }
 
         // Target format: 16kHz Mono Float32 for engine conversion
@@ -68,11 +68,11 @@ public final class AudioRecorder: ObservableObject {
                                               sampleRate: targetSampleRate,
                                               channels: 1,
                                               interleaved: false) else {
-            throw NSError(domain: "JiggypuffAudio", code: 2, userInfo: [NSLocalizedDescriptionKey: "Could not create target audio format."])
+            throw NSError(domain: "JigglypuffAudio", code: 2, userInfo: [NSLocalizedDescriptionKey: "Could not create target audio format."])
         }
 
         guard let converter = AVAudioConverter(from: inputFormat, to: outputFormat) else {
-            throw NSError(domain: "JiggypuffAudio", code: 3, userInfo: [NSLocalizedDescriptionKey: "Could not create audio converter."])
+            throw NSError(domain: "JigglypuffAudio", code: 3, userInfo: [NSLocalizedDescriptionKey: "Could not create audio converter."])
         }
 
         pcmDataBuffer = Data()

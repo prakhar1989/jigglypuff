@@ -1,14 +1,14 @@
 <div align="center">
 
-<img src="assets/logo.png" width="160" alt="Jiggypuff Logo" />
+<img src="assets/logo.png" width="160" alt="Jigglypuff Logo" />
 
-# Jiggypuff
+# Jigglypuff
 
 Voice dictation for macOS, powered by Gemini.
 
 </div>
 
-Jiggypuff is a menu bar app that types what you say. Press `⌥ Space`, talk, and the cleaned-up text is typed into whatever app you're in. It uses Google's Gemini speech models to remove filler words, fix self-corrections (*"meet Tuesday... actually Wednesday"* → *"meet Wednesday"*), and handle punctuation.
+Jigglypuff is a menu bar app that types what you say. Press `⌥ Space`, talk, and the cleaned-up text is typed into whatever app you're in. It uses Google's Gemini speech models to remove filler words, fix self-corrections (*"meet Tuesday... actually Wednesday"* → *"meet Wednesday"*), and handle punctuation.
 
 ## Features
 
@@ -22,12 +22,12 @@ Jiggypuff is a menu bar app that types what you say. Press `⌥ Space`, talk, an
 
 ## Install
 
-Download `Jiggypuff.dmg` from [GitHub Releases](https://github.com/prakhar1989/jigglypuff/releases) and drag it to your Applications folder.
+Download `Jigglypuff.dmg` from [GitHub Releases](https://github.com/prakhar1989/jigglypuff/releases) and drag it to your Applications folder.
 
 The app isn't notarized (no paid Apple Developer account), so macOS will warn you on first launch. Right-click the app and choose **Open**, or run:
 
 ```bash
-xattr -cr /Applications/Jiggypuff.app
+xattr -cr /Applications/Jigglypuff.app
 ```
 
 ## Build from source
@@ -38,14 +38,14 @@ Requires macOS 14+, Xcode 15+, and [XcodeGen](https://github.com/yonaskolb/Xcode
 git clone https://github.com/prakhar1989/jigglypuff.git
 cd jigglypuff
 ./scripts/build_app.sh
-open build/Jiggypuff.app
+open build/Jigglypuff.app
 ```
 
-To package a DMG instead, run `./scripts/create_dmg.sh`. To work in Xcode, run `xcodegen generate && open Jiggypuff.xcodeproj`.
+To package a DMG instead, run `./scripts/create_dmg.sh`. To work in Xcode, run `xcodegen generate && open Jigglypuff.xcodeproj`.
 
 ## Setup
 
 1. Get a Gemini API key from [Google AI Studio](https://aistudio.google.com/app/apikey).
-2. Click the Jiggypuff icon in the menu bar → **Settings**, and paste in your key.
-3. Grant **Microphone** and **Accessibility** permissions when prompted. (Accessibility is what lets Jiggypuff type into other apps.)
+2. Click the Jigglypuff icon in the menu bar → **Settings**, and paste in your key.
+3. Grant **Microphone** and **Accessibility** permissions when prompted. (Accessibility is what lets Jigglypuff type into other apps.)
 4. Press `⌥ Space` anywhere and start talking.

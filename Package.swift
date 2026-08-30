@@ -2,19 +2,19 @@
 import PackageDescription
 
 let package = Package(
-    name: "Jiggypuff",
+    name: "Jigglypuff",
     platforms: [
         .macOS(.v14)
     ],
     products: [
-        .executable(name: "Jiggypuff", targets: ["Jiggypuff"])
+        .executable(name: "Jigglypuff", targets: ["Jigglypuff"])
     ],
     dependencies: [],
     targets: [
         .executableTarget(
-            name: "Jiggypuff",
+            name: "Jigglypuff",
             dependencies: [],
-            path: "Sources/Jiggypuff"
+            path: "Sources/Jigglypuff"
         )
     ]
 )

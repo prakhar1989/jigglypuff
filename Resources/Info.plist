@@ -5,13 +5,13 @@
     <key>CFBundleDevelopmentRegion</key>
     <string>en</string>
     <key>CFBundleExecutable</key>
-    <string>Jiggypuff</string>
+    <string>Jigglypuff</string>
     <key>CFBundleIdentifier</key>
-    <string>com.jiggypuff.app</string>
+    <string>com.jigglypuff.app</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
-    <string>Jiggypuff</string>
+    <string>Jigglypuff</string>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>CFBundleIconName</key>
@@ -27,7 +27,7 @@
     <key>LSUIElement</key>
     <true/>
     <key>NSMicrophoneUsageDescription</key>
-    <string>Jiggypuff requires microphone access to record speech and transcribe it with Gemini 3.5 Transcribe.</string>
+    <string>Jigglypuff requires microphone access to record speech and transcribe it with Gemini 3.5 Transcribe.</string>
     <key>NSSupportsAutomaticGraphicsSwitching</key>
     <true/>
     <key>NSHighResolutionCapable</key>

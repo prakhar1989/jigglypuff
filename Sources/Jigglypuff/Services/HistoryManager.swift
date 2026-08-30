@@ -38,10 +38,10 @@ public final class HistoryManager: ObservableObject {
 
     private init() {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let jiggypuffDir = appSupport.appendingPathComponent("Jiggypuff", isDirectory: true)
+        let jigglypuffDir = appSupport.appendingPathComponent("Jigglypuff", isDirectory: true)
 
-        try? FileManager.default.createDirectory(at: jiggypuffDir, withIntermediateDirectories: true, attributes: nil)
-        self.fileURL = jiggypuffDir.appendingPathComponent("history.json")
+        try? FileManager.default.createDirectory(at: jigglypuffDir, withIntermediateDirectories: true, attributes: nil)
+        self.fileURL = jigglypuffDir.appendingPathComponent("history.json")
 
         loadHistory()
     }
