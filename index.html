@@ -1,0 +1,1453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Jigglypuff 🎤 — Voice Dictation for macOS (Powered by Gemini)</title>
+  <link rel="icon" type="image/png" href="assets/logo.png">
+  
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --bg: #fdf8ff;
+      --bg-card: #ffffff;
+      --bg-bubble: #f8f4ff;
+      --border-dark: #2d1847;
+      --border-soft: rgba(45, 24, 71, 0.12);
+      --pink-candy: #ff65a3;
+      --pink-pastel: #ffc2df;
+      --pink-soft: #fff0f7;
+      --lavender-pastel: #e9d5ff;
+      --cyan-pastel: #bae6fd;
+      --cyan-deep: #0284c7;
+      --yellow-candy: #fde047;
+      --yellow-pastel: #fef08a;
+      --green-pastel: #bbf7d0;
+      --green-deep: #16a34a;
+      --peach-pastel: #fed7aa;
+      --text: #231638;
+      --text-muted: #645579;
+      --text-dim: #9283a8;
+    }
+
+    *, *::before, *::after {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      -webkit-font-smoothing: antialiased;
+      -webkit-tap-highlight-color: transparent;
+      min-width: 0;
+    }
+
+    html {
+      width: 100%;
+      height: 100%;
+      background-color: var(--bg);
+    }
+
+    body {
+      width: 100%;
+      min-height: 100dvh;
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      overflow-x: hidden;
+      position: relative;
+    }
+
+    /* Desktop default: strictly 100dvh, zero scroll */
+    @media (min-width: 900px) and (min-height: 640px) {
+      body {
+        height: 100dvh;
+        overflow: hidden;
+      }
+    }
+
+    /* Mobile / small screens: natural smooth vertical scroll */
+    @media (max-width: 899px), (max-height: 639px) {
+      body {
+        height: auto;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+    }
+
+    /* Dreamy Pastel Candy Backdrop */
+    .candy-backdrop {
+      position: fixed;
+      inset: 0;
+      background-image: 
+        radial-gradient(at 10% 15%, #ffe4e6 0px, transparent 45%),
+        radial-gradient(at 90% 20%, #e0f2fe 0px, transparent 45%),
+        radial-gradient(at 50% 85%, #fae8ff 0px, transparent 50%),
+        radial-gradient(at 80% 85%, #fef9c3 0px, transparent 40%),
+        radial-gradient(at 20% 80%, #ccfbf1 0px, transparent 45%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .pastel-polka {
+      position: fixed;
+      inset: 0;
+      background-image: radial-gradient(circle, rgba(168, 85, 247, 0.12) 1.5px, transparent 1.5px);
+      background-size: 26px 26px;
+      pointer-events: none;
+      z-index: 0;
+      opacity: 0.7;
+    }
+
+    /* App Container */
+    .app-viewport {
+      position: relative;
+      z-index: 1;
+      width: 100%;
+      max-width: 1320px;
+      margin: 0 auto;
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 16px 32px 14px;
+    }
+
+    @media (min-width: 900px) and (min-height: 640px) {
+      .app-viewport {
+        height: 100dvh;
+      }
+    }
+
+    /* Top Navigation */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-bottom: 10px;
+      border-bottom: 2px dashed rgba(45, 24, 71, 0.15);
+      gap: 12px;
+      width: 100%;
+      flex-shrink: 0;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+      color: inherit;
+      flex-shrink: 0;
+    }
+
+    .brand-avatar-box {
+      position: relative;
+      width: 40px;
+      height: 40px;
+      border-radius: 12px;
+      background: #fff;
+      padding: 2px;
+      border: 2px solid var(--border-dark);
+      box-shadow: 2.5px 2.5px 0px var(--border-dark);
+      transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+      flex-shrink: 0;
+    }
+
+    .brand-avatar {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      border-radius: 8px;
+      display: block;
+    }
+
+    .brand:hover .brand-avatar-box {
+      transform: scale(1.1) rotate(-6deg);
+    }
+
+    .brand-title-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .brand-title {
+      font-family: 'Fredoka', cursive, sans-serif;
+      font-size: 23px;
+      font-weight: 700;
+      color: var(--border-dark);
+      letter-spacing: -0.5px;
+    }
+
+    .brand-pill {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      font-weight: 700;
+      background: var(--yellow-pastel);
+      color: var(--border-dark);
+      padding: 2px 7px;
+      border-radius: 999px;
+      border: 1.5px solid var(--border-dark);
+      box-shadow: 1.5px 1.5px 0px var(--border-dark);
+      transform: rotate(2deg);
+    }
+
+    .nav-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+
+    .nav-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-family: 'Fredoka', sans-serif;
+      font-size: 13.5px;
+      font-weight: 600;
+      color: var(--text);
+      text-decoration: none;
+      padding: 6px 14px;
+      border-radius: 12px;
+      background: #ffffff;
+      border: 2px solid var(--border-dark);
+      box-shadow: 2px 2px 0px var(--border-dark);
+      transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+      flex-shrink: 0;
+    }
+
+    .nav-btn:hover, .nav-btn:active {
+      background: var(--pink-soft);
+      transform: translate(-1px, -1px);
+      box-shadow: 3px 3px 0px var(--border-dark);
+    }
+
+    .nav-btn svg {
+      width: 15px;
+      height: 15px;
+      fill: currentColor;
+    }
+
+    /* Main Viewport Content */
+    main {
+      display: grid;
+      grid-template-columns: 1.05fr 1fr;
+      gap: 32px;
+      align-items: center;
+      flex: 1;
+      padding: 10px 0;
+      width: 100%;
+    }
+
+    /* Left Hero Column */
+    .hero-col {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      justify-content: center;
+      width: 100%;
+    }
+
+    .hero-stickers {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .sticker-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-family: 'Fredoka', sans-serif;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 3.5px 10px;
+      border-radius: 999px;
+      border: 2px solid var(--border-dark);
+      box-shadow: 2px 2px 0px var(--border-dark);
+      white-space: nowrap;
+    }
+
+    .sticker-pink {
+      background: var(--pink-pastel);
+      color: var(--border-dark);
+      transform: rotate(-1deg);
+    }
+
+    .sticker-cyan {
+      background: var(--cyan-pastel);
+      color: var(--border-dark);
+      transform: rotate(1.5deg);
+    }
+
+    .sticker-key {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11.5px;
+      font-weight: 700;
+      background: #ffffff;
+      color: var(--border-dark);
+      border: 2px solid var(--border-dark);
+      box-shadow: 2px 2px 0px var(--border-dark);
+      border-radius: 10px;
+      padding: 3.5px 9px;
+      white-space: nowrap;
+    }
+
+    .sticker-key kbd {
+      background: var(--yellow-candy);
+      color: var(--border-dark);
+      padding: 1px 5px;
+      border-radius: 5px;
+      font-weight: 800;
+      border: 1px solid var(--border-dark);
+      box-shadow: 1px 1px 0px var(--border-dark);
+    }
+
+    .hero-heading {
+      font-family: 'Fredoka', cursive, sans-serif;
+      font-size: clamp(28px, 4vw, 50px);
+      font-weight: 700;
+      line-height: 1.1;
+      letter-spacing: -0.5px;
+      color: var(--border-dark);
+      word-wrap: break-word;
+    }
+
+    .hero-heading .pop-text {
+      color: var(--pink-candy);
+      display: inline-block;
+      position: relative;
+    }
+
+    .hero-heading .pop-cyan {
+      color: var(--cyan-deep);
+      display: inline-block;
+    }
+
+    .hero-sub {
+      font-size: clamp(13.5px, 1.15vw, 16px);
+      line-height: 1.55;
+      color: var(--text-muted);
+      max-width: 520px;
+    }
+
+    .hero-sub b {
+      color: var(--border-dark);
+      font-weight: 700;
+    }
+
+    /* CTA Area */
+    .cta-area {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-top: 4px;
+      width: 100%;
+    }
+
+    .btn-download-cartoon {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      background: linear-gradient(180deg, #ff77ad 0%, #ff4b8b 100%);
+      color: #ffffff;
+      text-decoration: none;
+      padding: 12px 22px;
+      border-radius: 18px;
+      border: 2.5px solid var(--border-dark);
+      box-shadow: 
+        0 4px 0px var(--border-dark),
+        0 10px 24px rgba(255, 75, 139, 0.35);
+      cursor: pointer;
+      transition: all 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
+      user-select: none;
+      width: fit-content;
+      max-width: 100%;
+    }
+
+    .btn-download-cartoon:hover {
+      transform: translateY(-2px) scale(1.01);
+      box-shadow: 
+        0 6px 0px var(--border-dark),
+        0 14px 28px rgba(255, 75, 139, 0.5);
+      background: linear-gradient(180deg, #ff8dc0 0%, #ff5c99 100%);
+    }
+
+    .btn-download-cartoon:active {
+      transform: translateY(2px) scale(0.99);
+      box-shadow: 
+        0 1px 0px var(--border-dark),
+        0 4px 12px rgba(255, 75, 139, 0.3);
+    }
+
+    .btn-icon-circle {
+      width: 36px;
+      height: 36px;
+      background: #ffffff;
+      border-radius: 50%;
+      border: 2px solid var(--border-dark);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 1.5px 1.5px 0px var(--border-dark);
+      flex-shrink: 0;
+    }
+
+    .btn-icon-circle svg {
+      width: 18px;
+      height: 18px;
+      fill: #ff4b8b;
+      display: block;
+    }
+
+    .btn-text-block {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      line-height: 1.15;
+    }
+
+    .btn-main-title {
+      font-family: 'Fredoka', cursive, sans-serif;
+      font-size: 18px;
+      font-weight: 700;
+      color: #ffffff;
+      text-shadow: 1.5px 1.5px 0px var(--border-dark);
+      letter-spacing: 0.2px;
+    }
+
+    .btn-sub-title {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      font-weight: 700;
+      color: #ffe4f0;
+      opacity: 0.95;
+    }
+
+    /* Terminal Quick Command Box */
+    .quarantine-box {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      background: #ffffff;
+      border: 2px solid var(--border-dark);
+      padding: 8px 12px;
+      border-radius: 14px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11.5px;
+      color: var(--text-muted);
+      cursor: pointer;
+      box-shadow: 2.5px 2.5px 0px var(--border-dark);
+      transition: all 0.2s ease;
+      width: fit-content;
+      max-width: 100%;
+    }
+
+    .quarantine-box-left {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .quarantine-box:hover, .quarantine-box:active {
+      background: var(--pink-soft);
+      transform: translate(-1px, -1px);
+      box-shadow: 3.5px 3.5px 0px var(--border-dark);
+    }
+
+    .quarantine-box code {
+      color: var(--pink-candy);
+      font-weight: 700;
+      word-break: break-all;
+    }
+
+    .copy-pill-btn {
+      background: var(--yellow-candy);
+      border: 1.5px solid var(--border-dark);
+      color: var(--border-dark);
+      padding: 3px 7px;
+      border-radius: 6px;
+      font-size: 10px;
+      font-family: 'Fredoka', sans-serif;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: 1px 1px 0px var(--border-dark);
+      transition: transform 0.15s;
+      flex-shrink: 0;
+    }
+
+    .quarantine-box:hover .copy-pill-btn {
+      transform: scale(1.08);
+      background: #fff;
+    }
+
+    /* Right Column: Mascot & Interactive Live Stage */
+    .stage-col {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      width: 100%;
+    }
+
+    .mascot-container {
+      position: relative;
+      width: 100%;
+      max-width: 460px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .mascot-hero-card {
+      position: relative;
+      width: 100%;
+      background: var(--bg-card);
+      border: 2.5px solid var(--border-dark);
+      border-radius: 24px;
+      padding: 16px 18px 14px;
+      box-shadow: 
+        5px 5px 0px var(--border-dark),
+        0 16px 36px rgba(45, 24, 71, 0.1);
+    }
+
+    .mascot-header-strip {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+      width: 100%;
+    }
+
+    .mascot-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-family: 'Fredoka', sans-serif;
+      font-size: 12px;
+      font-weight: 700;
+      background: var(--pink-pastel);
+      border: 1.5px solid var(--border-dark);
+      color: var(--border-dark);
+      padding: 2.5px 9px;
+      border-radius: 999px;
+      box-shadow: 1.5px 1.5px 0px var(--border-dark);
+    }
+
+    .singing-notes-hud {
+      display: flex;
+      gap: 5px;
+      font-size: 15px;
+      animation: noteBounce 1.5s infinite alternate ease-in-out;
+    }
+
+    @keyframes noteBounce {
+      0% { transform: translateY(0) rotate(-4deg); }
+      100% { transform: translateY(-4px) rotate(4deg); }
+    }
+
+    /* Mode Selector Pills */
+    .mode-pills-row {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 10px;
+      overflow-x: auto;
+      padding: 2px 2px 6px;
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+      -webkit-overflow-scrolling: touch;
+      width: 100%;
+    }
+
+    .mode-pills-row::-webkit-scrollbar {
+      display: none;
+    }
+
+    .mode-btn {
+      background: #ffffff;
+      border: 2px solid var(--border-dark);
+      color: var(--text-muted);
+      font-family: 'Fredoka', sans-serif;
+      font-size: 11.5px;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 10px;
+      cursor: pointer;
+      white-space: nowrap;
+      box-shadow: 1.5px 1.5px 0px var(--border-dark);
+      transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+      flex-shrink: 0;
+    }
+
+    .mode-btn:hover, .mode-btn:active {
+      background: var(--pink-soft);
+      color: var(--border-dark);
+      transform: translateY(-1px);
+    }
+
+    .mode-btn.active {
+      background: var(--pink-pastel);
+      color: var(--border-dark);
+      box-shadow: 2px 2px 0px var(--border-dark);
+      font-weight: 700;
+    }
+
+    /* Mascot Center Stage Inner */
+    .mascot-stage-inner {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 12px;
+      background: var(--bg-bubble);
+      border: 2px solid var(--border-dark);
+      border-radius: 18px;
+      padding: 10px 12px;
+      box-shadow: 2.5px 2.5px 0px var(--border-dark);
+      width: 100%;
+    }
+
+    .jigglypuff-avatar-wrap {
+      position: relative;
+      width: 68px;
+      height: 68px;
+      flex-shrink: 0;
+      cursor: pointer;
+      transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    .jigglypuff-avatar-wrap:hover, .jigglypuff-avatar-wrap:active {
+      transform: scale(1.08) rotate(-5deg);
+    }
+
+    .jigglypuff-img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      border-radius: 16px;
+      border: 2px solid var(--border-dark);
+      box-shadow: 
+        0 0 12px rgba(255, 101, 163, 0.25),
+        2px 2px 0px var(--border-dark);
+      display: block;
+    }
+
+    .live-sound-pulse {
+      position: absolute;
+      inset: -4px;
+      border-radius: 20px;
+      border: 2px dashed var(--pink-candy);
+      opacity: 0.7;
+      animation: spinDashed 8s linear infinite;
+    }
+
+    @keyframes spinDashed {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .mascot-hud-info {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      min-width: 0;
+    }
+
+    .hud-meta-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      width: 100%;
+    }
+
+    .hud-status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10.5px;
+      font-weight: 700;
+      color: var(--pink-candy);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      min-width: 0;
+    }
+
+    .hud-dot-rec {
+      width: 7px;
+      height: 7px;
+      background: var(--pink-candy);
+      border-radius: 50%;
+      box-shadow: 0 0 6px var(--pink-candy);
+      animation: blinkDot 1s infinite alternate;
+      flex-shrink: 0;
+    }
+
+    @keyframes blinkDot {
+      0% { opacity: 0.3; }
+      100% { opacity: 1; }
+    }
+
+    .hud-timer-tag {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10.5px;
+      color: var(--text-dim);
+      flex-shrink: 0;
+    }
+
+    /* Candy Waveform Bars */
+    .candy-waveform {
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 2.5px;
+      background: #ffffff;
+      border: 1.5px solid var(--border-dark);
+      border-radius: 8px;
+      padding: 3px 6px;
+      overflow: hidden;
+      box-shadow: 1.5px 1.5px 0px var(--border-dark);
+      width: 100%;
+    }
+
+    .candy-bar {
+      flex: 1;
+      max-width: 4.5px;
+      height: 8px;
+      border-radius: 999px;
+      background: linear-gradient(180deg, #38bdf8 0%, var(--pink-candy) 100%);
+      transition: height 0.08s ease;
+      flex-shrink: 0;
+    }
+
+    /* Comic Speech Dialog Comparison */
+    .comic-dialog-box {
+      background: #ffffff;
+      border: 2px solid var(--border-dark);
+      border-radius: 16px;
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+      position: relative;
+      box-shadow: 2.5px 2.5px 0px var(--border-dark);
+      width: 100%;
+    }
+
+    .dialog-item {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      width: 100%;
+    }
+
+    .dialog-label {
+      font-family: 'Fredoka', sans-serif;
+      font-size: 10.5px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .dialog-label.before { color: var(--text-dim); }
+    .dialog-label.after { color: var(--green-deep); }
+
+    .dialog-text {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11.5px;
+      line-height: 1.4;
+      word-break: break-word;
+      overflow-wrap: break-word;
+    }
+
+    .dialog-text.before {
+      color: #9488a8;
+      text-decoration: line-through;
+      text-decoration-color: var(--pink-candy);
+    }
+
+    .dialog-text.after {
+      color: var(--border-dark);
+      font-weight: 700;
+      border-left: 3px solid var(--green-deep);
+      padding-left: 7px;
+    }
+
+    /* Card Bottom Controls */
+    .mascot-card-bottom {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 10px;
+      padding-top: 8px;
+      border-top: 2px dashed rgba(45, 24, 71, 0.15);
+      gap: 10px;
+      width: 100%;
+    }
+
+    .sing-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      background: var(--yellow-candy);
+      color: var(--border-dark);
+      border: 2px solid var(--border-dark);
+      box-shadow: 2px 2px 0px var(--border-dark);
+      font-family: 'Fredoka', sans-serif;
+      font-size: 12.5px;
+      font-weight: 700;
+      padding: 6px 14px;
+      border-radius: 9px;
+      cursor: pointer;
+      transition: all 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    .sing-btn:hover {
+      background: #ffffff;
+      transform: translate(-1px, -1px);
+      box-shadow: 3px 3px 0px var(--border-dark);
+    }
+
+    .sing-btn:active {
+      transform: translate(1px, 1px);
+      box-shadow: 1px 1px 0px var(--border-dark);
+    }
+
+    .press-hint {
+      font-family: 'Fredoka', sans-serif;
+      font-size: 11.5px;
+      color: var(--text-dim);
+    }
+
+    .press-hint kbd {
+      background: var(--bg-bubble);
+      padding: 2px 5px;
+      border-radius: 5px;
+      color: var(--border-dark);
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 700;
+      border: 1px solid var(--border-dark);
+      box-shadow: 1px 1px 0px var(--border-dark);
+    }
+
+    /* Footer */
+    footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-top: 10px;
+      border-top: 2px dashed rgba(45, 24, 71, 0.15);
+      font-size: 11.5px;
+      color: var(--text-muted);
+      gap: 10px;
+      width: 100%;
+      flex-shrink: 0;
+    }
+
+    .footer-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-family: 'Fredoka', sans-serif;
+      font-weight: 500;
+      flex-wrap: wrap;
+    }
+
+    .footer-links {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-family: 'Fredoka', sans-serif;
+      font-size: 12px;
+      flex-wrap: wrap;
+    }
+
+    .footer-link {
+      color: var(--border-dark);
+      text-decoration: none;
+      font-weight: 600;
+      transition: color 0.2s;
+    }
+
+    .footer-link:hover {
+      color: var(--pink-candy);
+    }
+
+    /* Toast Notification */
+    .toast {
+      position: fixed;
+      bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+      left: 50%;
+      transform: translateX(-50%) translateY(100px);
+      background: var(--yellow-candy);
+      border: 2.5px solid var(--border-dark);
+      color: var(--border-dark);
+      padding: 7px 18px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-family: 'Fredoka', sans-serif;
+      font-weight: 700;
+      box-shadow: 3px 3px 0px var(--border-dark), 0 10px 25px rgba(45, 24, 71, 0.2);
+      opacity: 0;
+      transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+      z-index: 100;
+      pointer-events: none;
+      white-space: nowrap;
+    }
+
+    .toast.show {
+      transform: translateX(-50%) translateY(0);
+      opacity: 1;
+    }
+
+    /* Floating Musical Sparkles */
+    .floating-note {
+      position: fixed;
+      pointer-events: none;
+      font-size: 22px;
+      opacity: 0;
+      animation: floatUp 2.4s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+      z-index: 60;
+      filter: drop-shadow(2px 2px 0px rgba(45, 24, 71, 0.4));
+    }
+
+    @keyframes floatUp {
+      0% { transform: translateY(0) scale(0.5) rotate(0deg); opacity: 0; }
+      20% { opacity: 1; transform: translateY(-15px) scale(1.1) rotate(-15deg); }
+      80% { opacity: 0.9; }
+      100% { transform: translateY(-90px) scale(1.3) rotate(25deg); opacity: 0; }
+    }
+
+    /* ========================================================= */
+    /* MOBILE-SPECIFIC CLEAN OVERRIDES (< 899px)                 */
+    /* ========================================================= */
+    
+    @media (max-width: 899px) {
+      .app-viewport {
+        padding: 12px 14px calc(18px + env(safe-area-inset-bottom, 0px));
+        gap: 16px;
+      }
+
+      header {
+        padding-bottom: 8px;
+      }
+
+      .brand-title {
+        font-size: 20px;
+      }
+
+      .brand-avatar-box {
+        width: 34px;
+        height: 34px;
+      }
+
+      main {
+        grid-template-columns: 1fr;
+        gap: 18px;
+        padding: 0;
+      }
+
+      .hero-col {
+        text-align: center;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .hero-stickers {
+        justify-content: center;
+      }
+
+      .hero-heading {
+        font-size: clamp(24px, 6.8vw, 36px);
+      }
+
+      .hero-sub {
+        font-size: 13.5px;
+        line-height: 1.5;
+      }
+
+      .cta-area {
+        align-items: center;
+        width: 100%;
+      }
+
+      .btn-download-cartoon {
+        width: 100%;
+        max-width: 100%;
+        justify-content: center;
+        padding: 12px 16px;
+        border-radius: 16px;
+      }
+
+      .quarantine-box {
+        width: 100%;
+        max-width: 100%;
+        font-size: 11px;
+        padding: 7px 10px;
+        border-radius: 12px;
+      }
+
+      .mascot-container {
+        max-width: 100%;
+      }
+
+      .mascot-hero-card {
+        padding: 12px 10px;
+        border-radius: 20px;
+        box-shadow: 3.5px 3.5px 0px var(--border-dark);
+      }
+
+      .jigglypuff-avatar-wrap {
+        width: 58px;
+        height: 58px;
+      }
+
+      .mascot-stage-inner {
+        padding: 8px 10px;
+        gap: 10px;
+        border-radius: 14px;
+      }
+
+      .candy-waveform {
+        height: 28px;
+        padding: 2px 4px;
+      }
+
+      .comic-dialog-box {
+        padding: 8px 10px;
+        border-radius: 14px;
+      }
+
+      .dialog-text {
+        font-size: 11.5px;
+      }
+
+      .mascot-card-bottom {
+        padding-top: 6px;
+        margin-top: 8px;
+      }
+
+      .desktop-hint {
+        display: none;
+      }
+
+      .mobile-hint {
+        display: inline !important;
+      }
+
+      footer {
+        flex-direction: column;
+        gap: 8px;
+        text-align: center;
+        padding-top: 8px;
+      }
+
+      .footer-left, .footer-links {
+        justify-content: center;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Dreamy Candy Pastel Backdrop -->
+  <div class="candy-backdrop"></div>
+  <div class="pastel-polka"></div>
+
+  <div class="app-viewport">
+    
+    <!-- Top Header -->
+    <header>
+      <a href="#" class="brand">
+        <div class="brand-avatar-box">
+          <img src="assets/logo.png" alt="Jigglypuff Icon" class="brand-avatar">
+        </div>
+        <div class="brand-title-group">
+          <span class="brand-title">Jigglypuff</span>
+          <span class="brand-pill">v0.0.1</span>
+        </div>
+      </a>
+
+      <div class="nav-actions">
+        <a href="https://github.com/prakhar1989/jigglypuff" target="_blank" rel="noopener noreferrer" class="nav-btn">
+          <svg viewBox="0 0 24 24"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+          GitHub
+        </a>
+      </div>
+    </header>
+
+    <!-- Main Viewport Content -->
+    <main>
+      
+      <!-- Hero Copy Column -->
+      <div class="hero-col">
+        
+        <div class="hero-stickers">
+          <div class="sticker-tag sticker-pink">
+            🎙️ macOS Menu Bar App
+          </div>
+          <div class="sticker-tag sticker-cyan">
+            ✨ Powered by Gemini
+          </div>
+          <div class="sticker-key">
+            Hotkey: <kbd>⌥</kbd> <kbd>Space</kbd>
+          </div>
+        </div>
+
+        <h1 class="hero-heading">
+          Sing your thoughts.<br>
+          <span class="pop-text">Jigglypuff</span> <span class="pop-cyan">types it</span> clean!
+        </h1>
+
+        <p class="hero-sub">
+          The fluffiest voice dictation tool for macOS. Press <b>⌥ Space</b>, ramble freely, and Gemini cuts the <em>"ums"</em>, fixes self-corrections (<em>"Tuesday... wait, Wednesday!"</em>), and types straight into any app!
+        </p>
+
+        <!-- CTA & Download Section -->
+        <div class="cta-area">
+          <a href="https://github.com/prakhar1989/jigglypuff/releases/download/0.0.1/Jigglypuff.dmg" class="btn-download-cartoon" id="downloadBtn">
+            <div class="btn-icon-circle">
+              <svg viewBox="0 0 24 24"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM17 13l-5 5-5-5h3V9h4v4h3z"/></svg>
+            </div>
+            <div class="btn-text-block">
+              <span class="btn-main-title">Download Jigglypuff.dmg</span>
+              <span class="btn-sub-title">v0.0.1 · Apple Silicon &amp; Intel Universal</span>
+            </div>
+          </a>
+
+          <!-- Quarantine 1-Click Copy -->
+          <div class="quarantine-box" id="copyCmdBtn" title="Click to copy un-quarantine command">
+            <div class="quarantine-box-left">
+              <span>First launch?</span>
+              <code>xattr -cr /Applications/Jigglypuff.app</code>
+            </div>
+            <button class="copy-pill-btn" id="copyBtnText">COPY</button>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Mascot & Interactive Live Stage Column -->
+      <div class="stage-col">
+        <div class="mascot-container">
+          
+          <div class="mascot-hero-card">
+            
+            <div class="mascot-header-strip">
+              <div class="mascot-badge">
+                🎵 Live Dictation Demo
+              </div>
+              <div class="singing-notes-hud">
+                <span>🎵</span>
+                <span>✨</span>
+                <span>🎶</span>
+              </div>
+            </div>
+
+            <!-- Mode Selector Chips (Swipeable / Tapable on Mobile) -->
+            <div class="mode-pills-row" id="modePills">
+              <button class="mode-btn active" data-mode="cleanup">✨ Smart Cleanup</button>
+              <button class="mode-btn" data-mode="email">✉️ Quick Email</button>
+              <button class="mode-btn" data-mode="code">💻 Code Mode</button>
+              <button class="mode-btn" data-mode="bullet">📋 Bullet List</button>
+            </div>
+
+            <!-- Mascot + Live Waveform Card -->
+            <div class="mascot-stage-inner" id="mascotStage">
+              
+              <div class="jigglypuff-avatar-wrap" id="jigglyAvatar" title="Click or tap Jigglypuff to test!">
+                <div class="live-sound-pulse"></div>
+                <img src="assets/logo.png" alt="Singing Jigglypuff Mascot" class="jigglypuff-img">
+              </div>
+
+              <div class="mascot-hud-info">
+                <div class="hud-meta-row">
+                  <div class="hud-status-badge">
+                    <span class="hud-dot-rec" id="hudRecDot"></span>
+                    <span id="hudStateLabel">RECORDING (⌥ SPACE)...</span>
+                  </div>
+                  <span class="hud-timer-tag" id="hudTime">00:03.2</span>
+                </div>
+
+                <!-- Animated Waveform -->
+                <div class="candy-waveform" id="candyWaveform">
+                  <!-- Dynamically populated candy bars -->
+                </div>
+              </div>
+
+            </div>
+
+            <!-- Comic Speech Dialog Comparison -->
+            <div class="comic-dialog-box">
+              <div class="dialog-item">
+                <div class="dialog-label before">🗣️ You Ramble:</div>
+                <div class="dialog-text before" id="rawSpeechText">
+                  "um so basically we need to push the release to friday... no wait monday morning"
+                </div>
+              </div>
+              <div class="dialog-item">
+                <div class="dialog-label after">✨ Jigglypuff Sings &amp; Types:</div>
+                <div class="dialog-text after" id="cleanedSpeechText">
+                  "We need to push the release to Monday morning."
+                </div>
+              </div>
+            </div>
+
+            <!-- Card Bottom Controls -->
+            <div class="mascot-card-bottom">
+              <button class="sing-btn" id="replayBtn">
+                <span>🎤 Sing Again</span>
+              </button>
+              <div class="press-hint">
+                <span class="desktop-hint">or press <kbd>⌥</kbd> + <kbd>Space</kbd></span>
+                <span class="mobile-hint" style="display:none;">Tap to sing 🎵</span>
+              </div>
+            </div>
+
+          </div>
+
+        </div>
+      </div>
+
+    </main>
+
+    <!-- Bottom Footer -->
+    <footer>
+      <div class="footer-left">
+        <span> Built for macOS 14+</span>
+        <span>•</span>
+        <span>Native Swift · Zero Telemetry</span>
+      </div>
+      <div class="footer-links">
+        <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" class="footer-link">Get Gemini API Key ↗</a>
+        <a href="https://github.com/prakhar1989/jigglypuff#setup" target="_blank" rel="noopener noreferrer" class="footer-link">Setup Guide</a>
+        <a href="https://github.com/prakhar1989/jigglypuff" target="_blank" rel="noopener noreferrer" class="footer-link">MIT License</a>
+      </div>
+    </footer>
+
+  </div>
+
+  <!-- Toast Element -->
+  <div class="toast" id="toast">Copied quarantine command! 🎉</div>
+
+  <!-- Interactive JavaScript -->
+  <script>
+    const scenarios = {
+      cleanup: {
+        raw: '"um so basically we need to push the release to friday... no wait monday morning"',
+        cleaned: '"We need to push the release to Monday morning."',
+        status: 'CLEANED & AUTO-TYPED! ✨',
+        duration: '00:03.2'
+      },
+      email: {
+        raw: '"hey team just wanted to check if everyone got the slides from yesterday thanks"',
+        cleaned: '"Hi team,\nJust following up to ensure everyone received yesterday\'s slides.\n\nBest,"',
+        status: 'EMAIL COMPOSED! ✉️',
+        duration: '00:03.8'
+      },
+      code: {
+        raw: '"write a function called fetch users that takes id string and returns a promise"',
+        cleaned: 'async function fetchUsers(id: string): Promise<User> { ... }',
+        status: 'CODE FORMATTED! 💻',
+        duration: '00:04.1'
+      },
+      bullet: {
+        raw: '"first fix the bug second deploy to prod and third let the client know"',
+        cleaned: '• Fix the bug\n• Deploy to prod\n• Notify the client',
+        status: 'BULLETS INSERTED! 📋',
+        duration: '00:03.5'
+      }
+    };
+
+    let currentMode = 'cleanup';
+    let isSimulating = false;
+    let waveInterval = null;
+
+    // Generate Dynamic Candy Waveform Bars
+    const waveformBox = document.getElementById('candyWaveform');
+    const BAR_COUNT = 18;
+    const bars = [];
+    for (let i = 0; i < BAR_COUNT; i++) {
+      const bar = document.createElement('div');
+      bar.className = 'candy-bar';
+      bar.style.height = `${Math.sin(i / 2.8) * 8 + 10}px`;
+      waveformBox.appendChild(bar);
+      bars.push(bar);
+    }
+
+    function animateWaveform(active = true) {
+      if (waveInterval) clearInterval(waveInterval);
+      if (!active) {
+        bars.forEach(b => {
+          b.style.height = '5px';
+          b.style.opacity = '0.35';
+        });
+        return;
+      }
+      bars.forEach(b => b.style.opacity = '1');
+      let step = 0;
+      waveInterval = setInterval(() => {
+        step += 0.25;
+        bars.forEach((bar, i) => {
+          const height = Math.abs(Math.sin(step + i * 0.4)) * 20 + 4;
+          bar.style.height = `${height}px`;
+        });
+      }, 50);
+    }
+
+    // Run Simulation
+    function runSimulation(modeKey) {
+      if (isSimulating) return;
+      isSimulating = true;
+      currentMode = modeKey;
+      const data = scenarios[modeKey];
+
+      const hudStateLabel = document.getElementById('hudStateLabel');
+      const hudRecDot = document.getElementById('hudRecDot');
+      const hudTime = document.getElementById('hudTime');
+      const rawEl = document.getElementById('rawSpeechText');
+      const cleanedEl = document.getElementById('cleanedSpeechText');
+      const jigglyAvatar = document.getElementById('jigglyAvatar');
+
+      // 1. Recording phase
+      hudStateLabel.textContent = 'RECORDING (⌥ SPACE)...';
+      hudStateLabel.style.color = 'var(--pink-candy)';
+      hudRecDot.style.background = 'var(--pink-candy)';
+      hudRecDot.style.boxShadow = '0 0 8px var(--pink-candy)';
+      hudTime.textContent = data.duration;
+      rawEl.textContent = 'Singing into microphone... 🎙️';
+      cleanedEl.textContent = 'Waiting for speech...';
+      
+      // Jiggle avatar
+      jigglyAvatar.style.transform = 'scale(1.1) rotate(-5deg)';
+      animateWaveform(true);
+      spawnMusicalNote();
+
+      setTimeout(() => {
+        rawEl.textContent = data.raw;
+        jigglyAvatar.style.transform = 'scale(1.04) rotate(3deg)';
+
+        // 2. Transcribing phase
+        hudStateLabel.textContent = 'GEMINI CLEANING... 🪄';
+        hudStateLabel.style.color = 'var(--cyan-deep)';
+        hudRecDot.style.background = 'var(--cyan-deep)';
+        hudRecDot.style.boxShadow = '0 0 8px var(--cyan-deep)';
+        animateWaveform(false);
+
+        setTimeout(() => {
+          // 3. Success / Typed phase
+          hudStateLabel.textContent = data.status;
+          hudStateLabel.style.color = 'var(--green-deep)';
+          hudRecDot.style.background = 'var(--green-deep)';
+          hudRecDot.style.boxShadow = '0 0 8px var(--green-deep)';
+          jigglyAvatar.style.transform = 'scale(1) rotate(0deg)';
+
+          typeWriter(cleanedEl, data.cleaned, () => {
+            isSimulating = false;
+          });
+        }, 500);
+
+      }, 1100);
+    }
+
+    function typeWriter(element, text, onComplete) {
+      element.textContent = '';
+      let index = 0;
+      const timer = setInterval(() => {
+        if (index < text.length) {
+          element.textContent += text.charAt(index);
+          index++;
+        } else {
+          clearInterval(timer);
+          if (onComplete) onComplete();
+        }
+      }, 14);
+    }
+
+    // Spawn floating musical notes positioned fixed relative to viewport
+    function spawnMusicalNote() {
+      const notes = ['🎵', '🎶', '✨', '💖', '🎤', '🌟', '🍭', '🍓'];
+      const note = document.createElement('div');
+      note.className = 'floating-note';
+      note.textContent = notes[Math.floor(Math.random() * notes.length)];
+      
+      const avatar = document.getElementById('jigglyAvatar');
+      const rect = avatar.getBoundingClientRect();
+      note.style.left = `${rect.left + Math.random() * (rect.width * 0.7)}px`;
+      note.style.top = `${rect.top}px`;
+      
+      document.body.appendChild(note);
+      setTimeout(() => note.remove(), 2400);
+    }
+
+    // Mode Selector buttons
+    const modeBtns = document.querySelectorAll('.mode-btn');
+    modeBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        modeBtns.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        runSimulation(btn.getAttribute('data-mode'));
+      });
+    });
+
+    // Replay / Sing again button
+    document.getElementById('replayBtn').addEventListener('click', () => {
+      runSimulation(currentMode);
+    });
+
+    // Clicking / tapping Jigglypuff avatar triggers song
+    document.getElementById('jigglyAvatar').addEventListener('click', () => {
+      runSimulation(currentMode);
+    });
+
+    // Keyboard trigger (Option+Space or Spacebar)
+    window.addEventListener('keydown', (e) => {
+      if ((e.altKey && e.code === 'Space') || (e.code === 'Space' && e.target === document.body)) {
+        e.preventDefault();
+        runSimulation(currentMode);
+      }
+    });
+
+    // Copy command
+    const copyCmdBtn = document.getElementById('copyCmdBtn');
+    const toast = document.getElementById('toast');
+    copyCmdBtn.addEventListener('click', () => {
+      navigator.clipboard.writeText('xattr -cr /Applications/Jigglypuff.app').then(() => {
+        document.getElementById('copyBtnText').textContent = 'COPIED!';
+        toast.classList.add('show');
+        setTimeout(() => {
+          document.getElementById('copyBtnText').textContent = 'COPY';
+          toast.classList.remove('show');
+        }, 2200);
+      });
+    });
+
+    // Device / screen detection for hint text
+    if (window.innerWidth < 900) {
+      const desktopHint = document.querySelector('.desktop-hint');
+      const mobileHint = document.querySelector('.mobile-hint');
+      if (desktopHint && mobileHint) {
+        desktopHint.style.display = 'none';
+        mobileHint.style.display = 'inline';
+      }
+    }
+
+    // Initialize
+    animateWaveform(true);
+    setTimeout(() => runSimulation('cleanup'), 300);
+  </script>
+
+</body>
+</html>
