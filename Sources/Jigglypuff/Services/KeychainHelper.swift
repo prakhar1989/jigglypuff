@@ -4,7 +4,8 @@ import Security
 /// Helper to securely store and retrieve sensitive credentials like the Gemini API Key in macOS Keychain.
 public final class KeychainHelper: Sendable {
     public static let shared = KeychainHelper()
-    private let service = "com.jiggypuff.app"
+    private let primaryService = "com.jigglypuff.app"
+    private let fallbackServices = ["com.jigglypuff.app", "com.jiggypuff.app", "com.transrib.app"]
     private let apiKeyAccount = "GeminiAPIKey"
 
     private init() {}
@@ -14,12 +15,12 @@ public final class KeychainHelper: Sendable {
     public func saveAPIKey(_ key: String) -> Bool {
         guard let data = key.data(using: .utf8) else { return false }
 
-        // Delete existing item first
+        // Delete existing items across services first
         deleteAPIKey()
 
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
+            kSecAttrService as String: primaryService,
             kSecAttrAccount as String: apiKeyAccount,
             kSecValueData as String: data,
             kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock
@@ -36,36 +37,45 @@ public final class KeychainHelper: Sendable {
             return envKey
         }
 
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: apiKeyAccount,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne
-        ]
+        // Try primary and fallback services
+        for svc in fallbackServices {
+            let query: [String: Any] = [
+                kSecClass as String: kSecClassGenericPassword,
+                kSecAttrService as String: svc,
+                kSecAttrAccount as String: apiKeyAccount,
+                kSecReturnData as String: true,
+                kSecMatchLimit as String: kSecMatchLimitOne
+            ]
 
-        var item: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &item)
+            var item: CFTypeRef?
+            let status = SecItemCopyMatching(query as CFDictionary, &item)
 
-        guard status == errSecSuccess,
-              let data = item as? Data,
-              let key = String(data: data, encoding: .utf8),
-              !key.isEmpty else {
-            return nil
+            if status == errSecSuccess,
+               let data = item as? Data,
+               let key = String(data: data, encoding: .utf8),
+               !key.isEmpty {
+                return key
+            }
         }
 
-        return key
+        return nil
     }
 
-    /// Deletes API Key from Keychain.
+    /// Deletes API Key from Keychain across known services.
     @discardableResult
     public func deleteAPIKey() -> Bool {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: apiKeyAccount
-        ]
-        let status = SecItemDelete(query as CFDictionary)
-        return status == errSecSuccess || status == errSecItemNotFound
+        var allSucceeded = true
+        for svc in fallbackServices {
+            let query: [String: Any] = [
+                kSecClass as String: kSecClassGenericPassword,
+                kSecAttrService as String: svc,
+                kSecAttrAccount as String: apiKeyAccount
+            ]
+            let status = SecItemDelete(query as CFDictionary)
+            if status != errSecSuccess && status != errSecItemNotFound {
+                allSucceeded = false
+            }
+        }
+        return allSucceeded
     }
 }

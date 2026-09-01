@@ -8,7 +8,7 @@ public final class HUDOverlayWindow: NSPanel {
 
     private init() {
         super.init(
-            contentRect: NSRect(x: 0, y: 0, width: 360, height: 60),
+            contentRect: NSRect(x: 0, y: 0, width: 460, height: 80),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -54,8 +54,8 @@ public final class HUDOverlayWindow: NSPanel {
         guard let screen = NSScreen.main ?? NSScreen.screens.first else { return }
         let screenRect = screen.visibleFrame
 
-        let windowWidth: CGFloat = 360
-        let windowHeight: CGFloat = 60
+        let windowWidth: CGFloat = 460
+        let windowHeight: CGFloat = 80
 
         let x = screenRect.origin.x + (screenRect.width - windowWidth) / 2.0
         let y = screenRect.origin.y + 70 // Above dock/bottom bar

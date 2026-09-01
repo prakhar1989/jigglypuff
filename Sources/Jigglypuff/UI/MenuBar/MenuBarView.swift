@@ -23,8 +23,17 @@ public struct MenuBarView: View {
             // Header: Status & Quick Action
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Jigglypuff")
-                        .font(.headline)
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text("Jigglypuff")
+                            .font(.headline)
+                        Text(appVersion)
+                            .font(.system(size: 10, weight: .semibold, design: .rounded))
+                            .foregroundColor(.secondary)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1.5)
+                            .background(Color.primary.opacity(0.06))
+                            .cornerRadius(4)
+                    }
                     Text(statusSubtitle)
                         .font(.caption)
                         .foregroundColor(.secondary)
@@ -52,6 +61,40 @@ public struct MenuBarView: View {
             .padding(.bottom, 2)
 
             Divider()
+
+            // Error Banner if in error state
+            if case .error(let errorMsg) = appState.state {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundColor(.orange)
+                            .font(.system(size: 11))
+                        Text("Error")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(.primary)
+                        Spacer()
+                        Button(action: {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(errorMsg, forType: .string)
+                        }) {
+                            Text("Copy")
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundColor(.accentColor)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    Text(errorMsg)
+                        .font(.system(size: 10))
+                        .foregroundColor(.primary.opacity(0.85))
+                        .lineLimit(4)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(8)
+                .background(Color.orange.opacity(0.12))
+                .cornerRadius(6)
+
+                Divider()
+            }
 
             // Mode Selector
             VStack(alignment: .leading, spacing: 6) {
@@ -187,5 +230,10 @@ public struct MenuBarView: View {
         let formatter = DateFormatter()
         formatter.timeStyle = .short
         return formatter.string(from: date)
+    }
+
+    private var appVersion: String {
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.2"
+        return "v\(version)"
     }
 }

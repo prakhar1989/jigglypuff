@@ -13,7 +13,7 @@ public enum TranscribeError: LocalizedError, Sendable {
         case .missingAPIKey:
             return "Gemini API Key is missing. Please add your key in Settings or set GEMINI_API_KEY."
         case .emptyAudio:
-            return "Audio recording was empty. Please speak clearly into the microphone."
+            return "No audio was captured from the microphone. Please check your mic settings."
         case .invalidResponse:
             return "Failed to parse transcription response from Gemini."
         case .apiError(let code, let msg):
@@ -49,7 +49,8 @@ public final class GeminiTranscribeService: Sendable {
                            mode: DictationMode,
                            customPrompt: String? = nil,
                            customVocabulary: String? = nil) async throws -> String {
-        guard !audioData.isEmpty else {
+        // Standard WAV header is 44 bytes; require at least some PCM sample payload
+        guard audioData.count > 44 else {
             throw TranscribeError.emptyAudio
         }
 
@@ -59,10 +60,25 @@ public final class GeminiTranscribeService: Sendable {
 
         switch model {
         case .gemini35Transcribe:
-            return try await transcribeWithInteractionsAPI(audioData: audioData,
+            do {
+                let result = try await transcribeWithInteractionsAPI(audioData: audioData,
+                                                                     apiKey: apiKey,
+                                                                     mode: mode,
+                                                                     customVocabulary: customVocabulary)
+                if !result.isEmpty {
+                    return result
+                }
+                print("Jigglypuff: Interactions API returned empty transcript. Trying fallback to generateContent...")
+            } catch {
+                print("Jigglypuff: Interactions API error (\(error.localizedDescription)). Trying fallback to generateContent...")
+            }
+            return try await transcribeWithGenerateContent(audioData: audioData,
                                                            apiKey: apiKey,
+                                                           model: .gemini25Flash,
                                                            mode: mode,
+                                                           customPrompt: customPrompt,
                                                            customVocabulary: customVocabulary)
+
         case .gemini25Flash:
             return try await transcribeWithGenerateContent(audioData: audioData,
                                                            apiKey: apiKey,
@@ -179,9 +195,9 @@ public final class GeminiTranscribeService: Sendable {
         }
 
         // "smart" applies disfluency removal/self-corrections/formatting;
-        // verbatim preserves raw speech. (smart is incompatible with diarization/timestamps.)
-        let modeValue: Any = (mode == .rawVerbatim) ? ["type": "verbatim"] : "smart"
-        var transcriptionConfig: [String: Any] = ["mode": modeValue]
+        // verbatim preserves raw speech.
+        let modeType = (mode == .rawVerbatim) ? "verbatim" : "smart"
+        var transcriptionConfig: [String: Any] = ["mode": ["type": modeType]]
 
         let vocabulary = parseVocabulary(customVocabulary)
         if !vocabulary.isEmpty {
@@ -231,19 +247,93 @@ public final class GeminiTranscribeService: Sendable {
             throw TranscribeError.apiError(statusCode: 0, message: "Transcription did not complete (status: \(status)).")
         }
 
-        // A completed interaction may omit `steps` entirely when nothing was recognized
-        // (silence, noise, non-speech audio) — that is an empty transcript, not an error.
-        let steps = json["steps"] as? [[String: Any]] ?? []
+        let transcript = extractTranscript(from: json)
+        if transcript.isEmpty {
+            print("Jigglypuff: Interaction response had empty transcript. JSON keys: \(json.keys.joined(separator: ", "))")
+        }
 
-        var transcript = ""
-        for step in steps where (step["type"] as? String) == "model_output" {
-            guard let content = step["content"] as? [[String: Any]] else { continue }
-            for part in content where (part["type"] as? String) == "text" {
-                transcript += part["text"] as? String ?? ""
+        return cleanTranscriptionOutput(transcript)
+    }
+
+    /// Recursively and resiliently extracts transcribed text from any Gemini REST schema.
+    private func extractTranscript(from json: [String: Any]) -> String {
+        // 1. Direct output_text field (Gemini 3.5 Transcribe Interactions API standard)
+        if let outputText = json["output_text"] as? String, !outputText.isEmpty {
+            return outputText.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        // 2. Direct text / transcript / transcription fields
+        if let text = json["text"] as? String, !text.isEmpty {
+            return text.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        if let transcript = json["transcript"] as? String, !transcript.isEmpty {
+            return transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        if let transcription = json["transcription"] as? String, !transcription.isEmpty {
+            return transcription.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        // 3. Outputs array
+        if let outputs = json["outputs"] as? [Any] {
+            var combined = ""
+            for output in outputs {
+                if let str = output as? String {
+                    combined += str
+                } else if let dict = output as? [String: Any] {
+                    if let text = dict["text"] as? String {
+                        combined += text
+                    } else if let content = dict["content"] as? String {
+                        combined += content
+                    }
+                }
+            }
+            if !combined.isEmpty {
+                return combined.trimmingCharacters(in: .whitespacesAndNewlines)
             }
         }
 
-        return transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        // 4. Steps array
+        if let steps = json["steps"] as? [[String: Any]] {
+            var combined = ""
+            for step in steps {
+                if let contentList = step["content"] as? [[String: Any]] {
+                    for part in contentList {
+                        if let partText = part["text"] as? String {
+                            combined += partText
+                        }
+                    }
+                } else if let text = step["text"] as? String {
+                    combined += text
+                } else if let contentStr = step["content"] as? String {
+                    combined += contentStr
+                } else if let outputStr = step["output"] as? String {
+                    combined += outputStr
+                } else if let outputText = step["output_text"] as? String {
+                    combined += outputText
+                }
+            }
+            if !combined.isEmpty {
+                return combined.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
+
+        // 5. Candidates array (generateContent style fallback)
+        if let candidates = json["candidates"] as? [[String: Any]],
+           let firstCandidate = candidates.first,
+           let content = firstCandidate["content"] as? [String: Any],
+           let parts = content["parts"] as? [[String: Any]] {
+            var combined = ""
+            for part in parts {
+                if let text = part["text"] as? String {
+                    combined += text
+                }
+            }
+            if !combined.isEmpty {
+                return combined.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
+
+        return ""
     }
 
     /// Deletes an uploaded file from the Files API (best effort).
@@ -349,23 +439,20 @@ public final class GeminiTranscribeService: Sendable {
 
     /// Parses Gemini generateContent JSON response
     private func parseTranscriptionResponse(data: Data) throws -> String {
-        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let candidates = json["candidates"] as? [[String: Any]],
-              let firstCandidate = candidates.first,
-              let content = firstCandidate["content"] as? [String: Any],
-              let parts = content["parts"] as? [[String: Any]] else {
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw TranscribeError.invalidResponse
         }
 
-        var resultText = ""
-        for part in parts {
-            if let text = part["text"] as? String {
-                resultText += text
+        let transcript = extractTranscript(from: json)
+        guard !transcript.isEmpty else {
+            // If candidates exists but was empty
+            if json["candidates"] != nil {
+                return ""
             }
+            throw TranscribeError.invalidResponse
         }
 
-        let trimmed = resultText.trimmingCharacters(in: .whitespacesAndNewlines)
-        return cleanTranscriptionOutput(trimmed)
+        return cleanTranscriptionOutput(transcript)
     }
 
     /// Cleans up any surrounding markdown block quotes or accidental meta responses

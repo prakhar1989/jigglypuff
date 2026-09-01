@@ -37,7 +37,7 @@ public struct HUDOverlayView: View {
                     )
             }
         )
-        .frame(minWidth: 180, maxWidth: 420)
+        .frame(minWidth: 180, maxWidth: 460)
         .fixedSize(horizontal: true, vertical: true)
         .animation(.spring(response: 0.35, dampingFraction: 0.8), value: appState.state)
     }
@@ -157,8 +157,37 @@ public struct HUDOverlayView: View {
                 Text(message)
                     .font(.system(size: 12, weight: .medium))
                     .foregroundColor(.primary)
-                    .lineLimit(2)
-                    .frame(maxWidth: 260, alignment: .leading)
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: 340, alignment: .leading)
+
+                Button(action: {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(message, forType: .string)
+                }) {
+                    Image(systemName: "doc.on.doc")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                        .padding(4)
+                        .background(Color.primary.opacity(0.08))
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .help("Copy error message to clipboard")
+
+                Button(action: {
+                    appState.state = .idle
+                    HUDOverlayWindow.shared.hide()
+                }) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundColor(.secondary)
+                        .padding(4)
+                        .background(Color.primary.opacity(0.08))
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .help("Dismiss error")
             }
         }
     }

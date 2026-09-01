@@ -4,12 +4,155 @@ import Accelerate
 import CoreAudio
 import AudioUnit
 
+private final class AudioBufferStorage: @unchecked Sendable {
+    private var lock = os_unfair_lock_s()
+    private var data: Data = Data()
+
+    func append(_ chunk: Data) {
+        os_unfair_lock_lock(&lock)
+        data.append(chunk)
+        os_unfair_lock_unlock(&lock)
+    }
+
+    func extractAndReset() -> Data {
+        os_unfair_lock_lock(&lock)
+        let result = data
+        data = Data()
+        os_unfair_lock_unlock(&lock)
+        return result
+    }
+
+    func reset() {
+        os_unfair_lock_lock(&lock)
+        data = Data()
+        os_unfair_lock_unlock(&lock)
+    }
+
+    var byteCount: Int {
+        os_unfair_lock_lock(&lock)
+        let count = data.count
+        os_unfair_lock_unlock(&lock)
+        return count
+    }
+}
+
 private final class AudioConverterBufferProvider: @unchecked Sendable {
     var isExhausted: Bool = false
     let buffer: AVAudioPCMBuffer
 
     init(buffer: AVAudioPCMBuffer) {
         self.buffer = buffer
+    }
+}
+
+private final class ResilientAudioConverter: @unchecked Sendable {
+    private var converter: AVAudioConverter?
+    private var cachedInputFormat: AVAudioFormat?
+    private let targetFormat: AVAudioFormat
+
+    init(targetFormat: AVAudioFormat) {
+        self.targetFormat = targetFormat
+    }
+
+    func process(buffer: AVAudioPCMBuffer) -> (pcmData: Data?, audioLevel: Float) {
+        let inputFormat = buffer.format
+        guard inputFormat.sampleRate > 0, buffer.frameLength > 0 else {
+            return (nil, 0.0)
+        }
+
+        // 1. Calculate RMS audio level with voice-activity noise gate
+        // Ambient room noise sits around -55dB to -44dB; speech sits between -36dB and -10dB.
+        var rawRms: Float = 0.0
+        if let floatChannelData = buffer.floatChannelData {
+            vDSP_rmsqv(floatChannelData[0], 1, &rawRms, vDSP_Length(buffer.frameLength))
+        } else if let int16Data = buffer.int16ChannelData {
+            var floatSamples = [Float](repeating: 0, count: Int(buffer.frameLength))
+            vDSP_vflt16(int16Data[0], 1, &floatSamples, 1, vDSP_Length(buffer.frameLength))
+            var scale: Float = 1.0 / 32768.0
+            vDSP_vsmul(floatSamples, 1, &scale, &floatSamples, 1, vDSP_Length(buffer.frameLength))
+            vDSP_rmsqv(floatSamples, 1, &rawRms, vDSP_Length(buffer.frameLength))
+        }
+
+        let noiseFloorDb: Float = -42.0 // Noise gate: ambient room noise below -42dB produces 0.0
+        let maxSpeechDb: Float = -12.0
+        let db = 20.0 * log10(max(rawRms, 0.000001))
+        
+        let normalizedLevel: Float
+        if db <= noiseFloorDb {
+            normalizedLevel = 0.0
+        } else {
+            let linear = (db - noiseFloorDb) / (maxSpeechDb - noiseFloorDb)
+            let clamped = max(0.0, min(1.0, linear))
+            normalizedLevel = pow(clamped, 1.3) // Exponential curve for punchy vocal response
+        }
+
+        // 2. Fast path: if incoming format already matches target format (16kHz 1ch Float32)
+        if inputFormat == targetFormat, let floatData = buffer.floatChannelData {
+            let frameLength = Int(buffer.frameLength)
+            var int16Data = Data(capacity: frameLength * 2)
+            for i in 0..<frameLength {
+                let sample = max(-1.0, min(1.0, floatData[0][i]))
+                var intSample = Int16(sample * 32767.0)
+                withUnsafeBytes(of: &intSample) { int16Data.append(contentsOf: $0) }
+            }
+            return (int16Data, normalizedLevel)
+        }
+
+        // 3. Dynamic / cached converter lookup (adapts if sample rate or channel count changes mid-stream)
+        if converter == nil || cachedInputFormat != inputFormat {
+            guard let newConverter = AVAudioConverter(from: inputFormat, to: targetFormat) else {
+                print("Jigglypuff Audio: Could not create audio converter from \(inputFormat) to \(targetFormat)")
+                return (nil, normalizedLevel)
+            }
+            self.converter = newConverter
+            self.cachedInputFormat = inputFormat
+        }
+
+        guard let conv = converter else {
+            return (nil, normalizedLevel)
+        }
+
+        let sampleRateRatio = targetFormat.sampleRate / inputFormat.sampleRate
+        let frameCapacity = AVAudioFrameCount(Double(buffer.frameLength) * sampleRateRatio) + 1024
+        guard let convertedBuffer = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: frameCapacity) else {
+            return (nil, normalizedLevel)
+        }
+
+        var error: NSError?
+        let provider = AudioConverterBufferProvider(buffer: buffer)
+        let inputBlock: AVAudioConverterInputBlock = { _, outStatus in
+            if provider.isExhausted {
+                outStatus.pointee = .noDataNow
+                return nil
+            }
+            outStatus.pointee = .haveData
+            provider.isExhausted = true
+            return provider.buffer
+        }
+
+        let status = conv.convert(to: convertedBuffer, error: &error, withInputFrom: inputBlock)
+        if status == .error || error != nil {
+            print("Jigglypuff Audio conversion error: \(error?.localizedDescription ?? "unknown error")")
+            conv.reset()
+            return (nil, normalizedLevel)
+        }
+
+        guard let floatChannelData = convertedBuffer.floatChannelData else {
+            return (nil, normalizedLevel)
+        }
+        let frameLength = Int(convertedBuffer.frameLength)
+        guard frameLength > 0 else {
+            return (nil, normalizedLevel)
+        }
+
+        var int16Data = Data(capacity: frameLength * 2)
+        for i in 0..<frameLength {
+            let sample = max(-1.0, min(1.0, floatChannelData[0][i]))
+            var intSample = Int16(sample * 32767.0)
+            withUnsafeBytes(of: &intSample) { int16Data.append(contentsOf: $0) }
+        }
+
+        return (int16Data, normalizedLevel)
     }
 }
 
@@ -31,15 +174,15 @@ public final class AudioRecorder: ObservableObject {
 
     private var audioEngine: AVAudioEngine?
     private var inputNode: AVAudioInputNode?
-    private var pcmDataBuffer: Data = Data()
+    private let bufferStorage = AudioBufferStorage()
     private let targetSampleRate: Double = 16000.0
-    private let queue = DispatchQueue(label: "com.jiggypuff.audioRecorder", qos: .userInteractive)
 
     private init() {}
 
-    /// Starts recording audio from default input device.
+    /// Starts recording audio from default or configured input device.
     public func startRecording() throws {
         stopEngine()
+        bufferStorage.reset()
 
         let engine = AVAudioEngine()
         let input = engine.inputNode
@@ -58,31 +201,25 @@ public final class AudioRecorder: ObservableObject {
                                  UInt32(MemoryLayout<AudioDeviceID>.size))
         }
 
-        let inputFormat = input.inputFormat(forBus: 0)
-        guard inputFormat.sampleRate > 0 else {
-            throw NSError(domain: "JigglypuffAudio", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid audio input format."])
-        }
-
         // Target format: 16kHz Mono Float32 for engine conversion
-        guard let outputFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32,
-                                              sampleRate: targetSampleRate,
-                                              channels: 1,
-                                              interleaved: false) else {
+        guard let targetFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32,
+                                               sampleRate: targetSampleRate,
+                                               channels: 1,
+                                               interleaved: false) else {
             throw NSError(domain: "JigglypuffAudio", code: 2, userInfo: [NSLocalizedDescriptionKey: "Could not create target audio format."])
         }
 
-        guard let converter = AVAudioConverter(from: inputFormat, to: outputFormat) else {
-            throw NSError(domain: "JigglypuffAudio", code: 3, userInfo: [NSLocalizedDescriptionKey: "Could not create audio converter."])
-        }
+        let converter = ResilientAudioConverter(targetFormat: targetFormat)
+        let storage = self.bufferStorage
 
-        pcmDataBuffer = Data()
-
-        // Install audio tap. NOTE: the handler must come from a nonisolated factory —
+        // Install audio tap. Handler must come from a nonisolated factory —
         // the tap runs on AVAudioEngine's realtime thread, and a closure inheriting
-        // MainActor isolation crashes there (Swift runtime executor check, SIGTRAP).
+        // MainActor isolation crashes there with SIGTRAP.
         let bufferSize: AVAudioFrameCount = 1024
-        input.installTap(onBus: 0, bufferSize: bufferSize, format: inputFormat,
-                         block: makeTapHandler(converter: converter, outputFormat: outputFormat))
+        input.installTap(onBus: 0,
+                         bufferSize: bufferSize,
+                         format: nil,
+                         block: makeTapHandler(converter: converter, storage: storage))
 
         engine.prepare()
         try engine.start()
@@ -95,68 +232,17 @@ public final class AudioRecorder: ObservableObject {
     }
 
     /// Builds the audio tap callback in a nonisolated context so the returned closure
-    /// does not inherit MainActor isolation (see note at the call site).
-    nonisolated private func makeTapHandler(converter: AVAudioConverter,
-                                            outputFormat: AVAudioFormat) -> AVAudioNodeTapBlock {
+    /// does not inherit MainActor isolation (see note at call site).
+    nonisolated private func makeTapHandler(converter: ResilientAudioConverter,
+                                            storage: AudioBufferStorage) -> AVAudioNodeTapBlock {
         return { [weak self] buffer, _ in
-            self?.processAudioBuffer(buffer: buffer, converter: converter, outputFormat: outputFormat)
-        }
-    }
-
-    /// Processes incoming audio buffer, converts sample rate, calculates RMS metering, and appends to PCM data.
-    nonisolated private func processAudioBuffer(buffer: AVAudioPCMBuffer, converter: AVAudioConverter, outputFormat: AVAudioFormat) {
-        let frameCapacity = AVAudioFrameCount(Double(buffer.frameLength) * (targetSampleRate / buffer.format.sampleRate)) + 1024
-        guard let convertedBuffer = AVAudioPCMBuffer(pcmFormat: outputFormat, frameCapacity: frameCapacity) else { return }
-
-        var error: NSError?
-        let provider = AudioConverterBufferProvider(buffer: buffer)
-
-        let inputBlock: AVAudioConverterInputBlock = { inNumPackets, outStatus in
-            if provider.isExhausted {
-                outStatus.pointee = .noDataNow
-                return nil
+            let (pcmData, level) = converter.process(buffer: buffer)
+            if let pcmData = pcmData {
+                storage.append(pcmData)
             }
-            outStatus.pointee = .haveData
-            provider.isExhausted = true
-            return provider.buffer
-        }
-
-        converter.convert(to: convertedBuffer, error: &error, withInputFrom: inputBlock)
-
-        if let error = error {
-            print("Audio conversion error: \(error.localizedDescription)")
-            return
-        }
-
-        guard let floatChannelData = convertedBuffer.floatChannelData else { return }
-        let channelSamples = floatChannelData[0]
-        let frameLength = Int(convertedBuffer.frameLength)
-
-        if frameLength == 0 { return }
-
-        // Compute RMS audio level
-        var rms: Float = 0.0
-        vDSP_rmsqv(channelSamples, 1, &rms, vDSP_Length(frameLength))
-
-        // Normalize RMS to 0.0 - 1.0 (dB scale)
-        let minDb: Float = -60.0
-        let db = 20.0 * log10(max(rms, 0.00001))
-        let normalizedLevel = max(0.0, min(1.0, (db - minDb) / (0.0 - minDb)))
-
-        Task { @MainActor in
-            self.audioLevel = normalizedLevel
-        }
-
-        // Convert Float32 samples to 16-bit Linear PCM Data
-        var int16Data = Data(capacity: frameLength * 2)
-        for i in 0..<frameLength {
-            let sample = max(-1.0, min(1.0, channelSamples[i]))
-            var intSample = Int16(sample * 32767.0)
-            withUnsafeBytes(of: &intSample) { int16Data.append(contentsOf: $0) }
-        }
-
-        queue.async {
-            self.pcmDataBuffer.append(int16Data)
+            Task { @MainActor [weak self] in
+                self?.audioLevel = level
+            }
         }
     }
 
@@ -164,14 +250,14 @@ public final class AudioRecorder: ObservableObject {
     public func stopRecording() -> Data {
         stopEngine()
 
-        var rawData = Data()
-        queue.sync {
-            rawData = self.pcmDataBuffer
-            self.pcmDataBuffer = Data()
-        }
+        let rawData = bufferStorage.extractAndReset()
 
         self.isRecording = false
         self.audioLevel = 0.0
+
+        guard !rawData.isEmpty else {
+            return Data()
+        }
 
         return createWAVData(from: rawData, sampleRate: Int(targetSampleRate), channels: 1, bitsPerSample: 16)
     }
@@ -179,9 +265,7 @@ public final class AudioRecorder: ObservableObject {
     /// Cancels recording and discards audio buffer.
     public func cancelRecording() {
         stopEngine()
-        queue.sync {
-            self.pcmDataBuffer = Data()
-        }
+        bufferStorage.reset()
         self.isRecording = false
         self.audioLevel = 0.0
     }

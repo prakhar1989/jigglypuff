@@ -114,6 +114,23 @@ public struct SettingsView: View {
                 Toggle("Show floating HUD pill during recording", isOn: $settings.showFloatingHUD)
                 Toggle("Play sound cues (start, stop, success)", isOn: $settings.playSoundEffects)
             }
+
+            Section(header: Text("About").font(.headline)) {
+                HStack {
+                    Text("Version")
+                    Spacer()
+                    Text("v\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.2")")
+                        .foregroundColor(.secondary)
+                        .font(.system(.body, design: .monospaced))
+                }
+
+                HStack {
+                    Text("Powered by")
+                    Spacer()
+                    Text("Google Gemini")
+                        .foregroundColor(.secondary)
+                }
+            }
         }
     }
 

@@ -66,7 +66,7 @@ public final class AppState: ObservableObject, HotkeyManagerDelegate {
         let behavior = SettingsStore.shared.hotkeyBehavior
         switch behavior {
         case .pushToTalk:
-            if state == .idle {
+            if !state.isBusy {
                 startRecording()
             }
         case .toggle:
@@ -86,14 +86,15 @@ public final class AppState: ObservableObject, HotkeyManagerDelegate {
     public func toggleRecording() {
         if state.isRecording {
             stopRecording()
-        } else if state == .idle {
+        } else if !state.isBusy {
             startRecording()
         }
     }
 
     public func startRecording() {
-        guard state == .idle else { return }
+        guard !state.isRecording else { return }
         dismissTimer?.invalidate()
+        dismissTimer = nil
 
         // Capture frontmost application before showing our UI
         self.activeAppName = NSWorkspace.shared.frontmostApplication?.localizedName
@@ -105,9 +106,9 @@ public final class AppState: ObservableObject, HotkeyManagerDelegate {
                     if granted {
                         self?.startRecording()
                     } else {
-                        self?.state = .error(message: "Microphone access required.")
+                        self?.state = .error(message: "Microphone access required. Please enable it in Settings.")
                         SoundEffects.shared.playError()
-                        self?.scheduleAutoDismiss(after: 3.0)
+                        self?.scheduleAutoDismiss(after: 4.5)
                     }
                 }
             }
@@ -135,9 +136,9 @@ public final class AppState: ObservableObject, HotkeyManagerDelegate {
 
             HUDOverlayWindow.shared.show()
         } catch {
-            self.state = .error(message: error.localizedDescription)
+            self.state = .error(message: "Audio error: \(error.localizedDescription)")
             SoundEffects.shared.playError()
-            scheduleAutoDismiss(after: 3.0)
+            scheduleAutoDismiss(after: 4.5)
         }
     }
 
@@ -150,6 +151,7 @@ public final class AppState: ObservableObject, HotkeyManagerDelegate {
         SoundEffects.shared.playStop()
         let recordedDuration = currentDuration
         let audioData = AudioRecorder.shared.stopRecording()
+        print("Jigglypuff: Recording finished (\(String(format: "%.1f", recordedDuration))s). Captured WAV payload: \(audioData.count) bytes.")
 
         self.state = .transcribing
 
@@ -164,10 +166,12 @@ public final class AppState: ObservableObject, HotkeyManagerDelegate {
                     customVocabulary: settings.customVocabulary
                 )
 
+                print("Jigglypuff: Transcribed result length: \(transcribed.count) characters: '\(transcribed)'")
+
                 guard !transcribed.isEmpty else {
                     SoundEffects.shared.playError()
-                    self.state = .error(message: "No speech detected. Please try again.")
-                    self.scheduleAutoDismiss(after: 2.5)
+                    self.state = .error(message: "No speech recognized in audio. Please try speaking closer to the microphone.")
+                    self.scheduleAutoDismiss(after: 4.5)
                     return
                 }
 
