@@ -43,3 +43,16 @@ targets:
       - sdk: Carbon.framework
       - sdk: ApplicationServices.framework
       - sdk: Security.framework
+
+  JigglypuffTests:
+    type: bundle.unit-test
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: Tests/JigglypuffTests
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.jigglypuff.tests
+    dependencies:
+      - target: Jigglypuff
