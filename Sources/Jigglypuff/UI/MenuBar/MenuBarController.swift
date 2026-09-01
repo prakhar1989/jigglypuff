@@ -12,8 +12,13 @@ public final class MenuBarController: NSObject {
     private var eventMonitor: Any?
     private var cancellables = Set<AnyCancellable>()
 
-    private var settingsWindowController: NSWindowController?
     private var historyWindowController: NSWindowController?
+
+    /// SwiftUI's `openSettings` environment action, captured from the popover's
+    /// view tree so AppKit code can open the Settings scene window. The
+    /// selector-based approach (`showSettingsWindow:`) does not work in this
+    /// LSUIElement app, so this bridge is the primary mechanism.
+    private(set) var swiftUIOpenSettings: (() -> Void)?
 
     override private init() {
         super.init()
@@ -47,6 +52,8 @@ public final class MenuBarController: NSObject {
                 NSApplication.shared.terminate(nil)
             }
         )
+        // Hosts the settings-action bridge so it arms when the popover shows
+        .background(MenuBarController.SettingsActionBridge())
 
         popover.contentViewController = NSHostingController(rootView: contentView)
         self.popover = popover
@@ -90,6 +97,31 @@ public final class MenuBarController: NSObject {
         }
     }
 
+    func showPopover() {
+        if let button = statusItem?.button, let popover = popover {
+            popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        }
+    }
+
+    func closePopoverForAutomation() {
+        closePopover()
+    }
+    /// Bridges SwiftUI's `openSettings` environment action into AppKit. Hosted as
+    /// an invisible background view of the popover; Settings is only ever opened
+    /// from the popover, so the action is always armed before use.
+    struct SettingsActionBridge: View {
+        @Environment(\.openSettings) private var openSettingsAction
+
+        var body: some View {
+            Color.clear
+                .frame(width: 0, height: 0)
+                .onAppear {
+                    let action = openSettingsAction
+                    MenuBarController.shared.swiftUIOpenSettings = { action() }
+                }
+        }
+    }
+
     @objc private func togglePopover() {
         guard let popover = popover, let button = statusItem?.button else { return }
 
@@ -106,25 +138,16 @@ public final class MenuBarController: NSObject {
     }
 
     public func openSettings() {
-        if let controller = settingsWindowController, let window = controller.window {
-            window.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
+        NSApp.activate(ignoringOtherApps: true)
+
+        if let open = swiftUIOpenSettings {
+            open()
             return
         }
 
-        let settingsView = SettingsView()
-        let hostingController = NSHostingController(rootView: settingsView)
-        let window = NSWindow(contentViewController: hostingController)
-        window.title = "Jigglypuff Settings"
-        window.styleMask = [.titled, .closable, .miniaturizable]
-        window.setContentSize(NSSize(width: 540, height: 480))
-        window.center()
-        window.isReleasedWhenClosed = false
-
-        let controller = NSWindowController(window: window)
-        self.settingsWindowController = controller
-        controller.showWindow(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        // Fallback for the rare case the bridge has not armed yet.
+        if NSApp.sendAction(NSSelectorFromString("showSettingsWindow:"), to: nil, from: nil) { return }
+        NSApp.sendAction(NSSelectorFromString("showPreferencesWindow:"), to: nil, from: nil)
     }
 
     public func openHistory() {

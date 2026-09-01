@@ -78,6 +78,23 @@ public enum DictationMode: String, CaseIterable, Identifiable, Codable, Sendable
         }
     }
 
+    public var summary: String {
+        switch self {
+        case .smartFlow:
+            return "Clean up fillers and self-corrections automatically"
+        case .rawVerbatim:
+            return "Exactly what you said, word for word"
+        case .email:
+            return "Polished, professional email or message"
+        case .bulletPoints:
+            return "Concise bullet points and action items"
+        case .codeTech:
+            return "Technical dictation with code-aware formatting"
+        case .custom:
+            return "Your own instructions for the transcript"
+        }
+    }
+
     public var iconName: String {
         switch self {
         case .smartFlow:
@@ -148,9 +165,18 @@ public enum HotkeyBehavior: String, CaseIterable, Identifiable, Codable, Sendabl
     public var displayName: String {
         switch self {
         case .pushToTalk:
-            return "Push to Talk (Hold key to record, release to type)"
+            return "Push to Talk"
         case .toggle:
-            return "Toggle (Press to start, press again to stop)"
+            return "Toggle"
+        }
+    }
+
+    public var explanation: String {
+        switch self {
+        case .pushToTalk:
+            return "Hold the shortcut to record, release to insert the transcript."
+        case .toggle:
+            return "Press the shortcut to start recording, press again to stop."
         }
     }
 }

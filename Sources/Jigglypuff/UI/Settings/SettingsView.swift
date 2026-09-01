@@ -1,6 +1,7 @@
 import SwiftUI
+import AppKit
 
-/// Main Tabbed Settings View
+/// Main Settings window, shown in a native Settings scene window with toolbar tabs.
 public struct SettingsView: View {
     @ObservedObject var settings = SettingsStore.shared
     @ObservedObject var permissions = PermissionManager.shared
@@ -10,11 +11,12 @@ public struct SettingsView: View {
     @State private var showAPIKey: Bool = false
     @State private var testStatus: String? = nil
     @State private var isTestingAPI: Bool = false
+    @State private var newVocabularyTerm: String = ""
 
     enum SettingsTab: String, CaseIterable, Identifiable {
         case general = "General"
         case model = "Model & API"
-        case modes = "Dictation Modes"
+        case modes = "Modes"
         case vocabulary = "Vocabulary"
         case permissions = "Permissions"
 
@@ -36,67 +38,65 @@ public struct SettingsView: View {
     public var body: some View {
         TabView(selection: $selectedTab) {
             generalTab
-                .tabItem {
-                    Label("General", systemImage: SettingsTab.general.iconName)
-                }
+                .tabItem { Label(SettingsTab.general.rawValue, systemImage: SettingsTab.general.iconName) }
                 .tag(SettingsTab.general)
 
             modelTab
-                .tabItem {
-                    Label("Model & API", systemImage: SettingsTab.model.iconName)
-                }
+                .tabItem { Label(SettingsTab.model.rawValue, systemImage: SettingsTab.model.iconName) }
                 .tag(SettingsTab.model)
 
             modesTab
-                .tabItem {
-                    Label("Modes", systemImage: SettingsTab.modes.iconName)
-                }
+                .tabItem { Label(SettingsTab.modes.rawValue, systemImage: SettingsTab.modes.iconName) }
                 .tag(SettingsTab.modes)
 
             vocabularyTab
-                .tabItem {
-                    Label("Vocabulary", systemImage: SettingsTab.vocabulary.iconName)
-                }
+                .tabItem { Label(SettingsTab.vocabulary.rawValue, systemImage: SettingsTab.vocabulary.iconName) }
                 .tag(SettingsTab.vocabulary)
 
             permissionsTab
-                .tabItem {
-                    Label("Permissions", systemImage: SettingsTab.permissions.iconName)
-                }
+                .tabItem { Label(SettingsTab.permissions.rawValue, systemImage: SettingsTab.permissions.iconName) }
                 .tag(SettingsTab.permissions)
         }
-        .padding(20)
-        .frame(width: 540, height: 480)
         .onAppear {
             inputDeviceManager.refresh()
             migrateSelectionMetadataIfNeeded()
         }
     }
 
+    /// A grouped, System Settings-style form with a consistent window width.
+    private func groupedForm<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        Form(content: content)
+            .formStyle(.grouped)
+            .frame(width: 520)
+    }
+
     // MARK: - General Tab
 
     private var generalTab: some View {
-        Form {
-            Section(header: Text("Global Hotkey").font(.headline)) {
+        groupedForm {
+            Section {
                 Picker("Trigger Mode", selection: $settings.hotkeyBehavior) {
                     ForEach(HotkeyBehavior.allCases) { behavior in
                         Text(behavior.displayName).tag(behavior)
                     }
                 }
 
-                HStack {
-                    Text("Shortcut:")
-                    Spacer()
-                    Text("⌥ Space (Option + Space)")
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(Color.primary.opacity(0.08))
-                        .cornerRadius(6)
-                        .font(.system(.body, design: .monospaced))
+                LabeledContent("Shortcut") {
+                    HStack(spacing: 5) {
+                        KeyCap("⌥ Option")
+                        Text("+")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        KeyCap("Space")
+                    }
                 }
+            } header: {
+                Text("Global Hotkey")
+            } footer: {
+                Text(settings.hotkeyBehavior.explanation)
             }
 
-            Section(header: Text("Audio Input").font(.headline)) {
+            Section {
                 Picker("Microphone", selection: $settings.audioInputDeviceSelection) {
                     Text("System Default").tag(AudioInputDeviceSelection.systemDefault)
 
@@ -111,36 +111,63 @@ public struct SettingsView: View {
                             .tag(device.identity)
                     }
                 }
-
+            } header: {
+                Text("Audio Input")
+            } footer: {
                 Text("Which microphone Jigglypuff listens to. Applies when the next recording starts.")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
             }
 
-            Section(header: Text("Behavior & Feedback").font(.headline)) {
-                Toggle("Auto-insert transcribed text into focused app", isOn: $settings.autoInsertText)
+            Section {
+                Toggle("Auto-insert transcript into focused app", isOn: $settings.autoInsertText)
+                    .toggleStyle(.switch)
                 Toggle("Always copy transcript to clipboard", isOn: $settings.copyToClipboardAlways)
-                Toggle("Show floating HUD pill during recording", isOn: $settings.showFloatingHUD)
+                    .toggleStyle(.switch)
+                Toggle("Show floating HUD while recording", isOn: $settings.showFloatingHUD)
+                    .toggleStyle(.switch)
                 Toggle("Play sound cues (start, stop, success)", isOn: $settings.playSoundEffects)
+                    .toggleStyle(.switch)
+            } header: {
+                Text("Behavior & Feedback")
             }
 
-            Section(header: Text("About").font(.headline)) {
-                HStack {
-                    Text("Version")
+            Section {
+                HStack(spacing: 12) {
+                    Image(nsImage: NSApp.applicationIconImage)
+                        .resizable()
+                        .frame(width: 36, height: 36)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Jigglypuff")
+                            .font(.headline)
+                        Text("Voice dictation for macOS, powered by Gemini.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+
                     Spacer()
-                    Text("v\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.2")")
-                        .foregroundColor(.secondary)
-                        .font(.system(.body, design: .monospaced))
+
+                    Link("GitHub", destination: URL(string: "https://github.com/prakhar1989/jigglypuff")!)
+                        .font(.callout)
                 }
 
-                HStack {
-                    Text("Powered by")
-                    Spacer()
+                LabeledContent("Version") {
+                    Text("v\(appVersion)")
+                        .foregroundColor(.secondary)
+                        .font(.system(.callout, design: .monospaced))
+                }
+
+                LabeledContent("Powered by") {
                     Text("Google Gemini")
                         .foregroundColor(.secondary)
                 }
+            } header: {
+                Text("About")
             }
         }
+    }
+
+    private var appVersion: String {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.2"
     }
 
     private func migrateSelectionMetadataIfNeeded() {
@@ -157,98 +184,132 @@ public struct SettingsView: View {
     // MARK: - Model & API Tab
 
     private var modelTab: some View {
-        Form {
-            Section(header: Text("Gemini API Configuration").font(.headline)) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Google AI Studio API Key")
-                        .font(.subheadline)
-
-                    HStack {
+        groupedForm {
+            Section {
+                HStack(spacing: 8) {
+                    Group {
                         if showAPIKey {
-                            TextField("Enter Gemini API Key", text: $settings.apiKey)
-                                .textFieldStyle(.roundedBorder)
+                            TextField("Gemini API Key", text: $settings.apiKey)
                         } else {
-                            SecureField("Enter Gemini API Key", text: $settings.apiKey)
-                                .textFieldStyle(.roundedBorder)
-                        }
-
-                        Button(action: { showAPIKey.toggle() }) {
-                            Image(systemName: showAPIKey ? "eye.slash" : "eye")
+                            SecureField("Gemini API Key", text: $settings.apiKey)
                         }
                     }
+                    .textFieldStyle(.roundedBorder)
 
-                    HStack {
-                        Button("Get API Key from Google AI Studio") {
-                            if let url = URL(string: "https://aistudio.google.com/app/apikey") {
-                                NSWorkspace.shared.open(url)
-                            }
-                        }
-                        .font(.caption)
-                        .buttonStyle(.link)
-
-                        Spacer()
-
-                        Button(action: testConnection) {
-                            if isTestingAPI {
-                                ProgressView().controlSize(.small)
-                            } else {
-                                Text("Test Connection")
-                            }
-                        }
-                        .disabled(settings.apiKey.isEmpty || isTestingAPI)
+                    Button(action: { showAPIKey.toggle() }) {
+                        Image(systemName: showAPIKey ? "eye.slash" : "eye")
                     }
-
-                    if let status = testStatus {
-                        Text(status)
-                            .font(.caption)
-                            .foregroundColor(status.contains("Success") ? .green : .red)
-                    }
+                    .buttonStyle(.plain)
+                    .help(showAPIKey ? "Hide API Key" : "Show API Key")
                 }
+
+                HStack {
+                    Link("Get an API Key from Google AI Studio",
+                         destination: URL(string: "https://aistudio.google.com/app/apikey")!)
+                        .font(.callout)
+
+                    Spacer()
+
+                    Button(action: testConnection) {
+                        Text("Test Connection")
+                    }
+                    .disabled(settings.apiKey.isEmpty || isTestingAPI)
+                }
+
+                if isTestingAPI {
+                    HStack(spacing: 6) {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text("Testing connection…")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                } else if let status = testStatus {
+                    HStack(spacing: 4) {
+                        Image(systemName: status.contains("Success") ? "checkmark.circle.fill" : "xmark.circle.fill")
+                        Text(status)
+                    }
+                    .font(.caption)
+                    .foregroundColor(status.contains("Success") ? .green : .red)
+                }
+            } header: {
+                Text("Gemini API")
+            } footer: {
+                Text("Your API key is stored securely in the macOS Keychain.")
             }
 
-            Section(header: Text("Transcription Model").font(.headline)) {
+            Section {
                 Picker("Model", selection: $settings.selectedModel) {
                     ForEach(TranscribeModel.allCases) { model in
                         Text(model.displayName).tag(model)
                     }
                 }
-
+            } header: {
+                Text("Transcription Model")
+            } footer: {
                 Text(settings.selectedModel.description)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
             }
         }
     }
 
-    // MARK: - Dictation Modes Tab
+    // MARK: - Modes Tab
 
     private var modesTab: some View {
-        Form {
-            Section(header: Text("Active Dictation Mode").font(.headline)) {
-                Picker("Selected Mode", selection: $settings.selectedDictationMode) {
-                    ForEach(DictationMode.allCases) { mode in
-                        Label(mode.displayName, systemImage: mode.iconName).tag(mode)
+        groupedForm {
+            Section {
+                ForEach(DictationMode.allCases) { mode in
+                    Button(action: { settings.selectedDictationMode = mode }) {
+                        HStack(spacing: 10) {
+                            Image(systemName: mode.iconName)
+                                .frame(width: 20)
+                                .foregroundColor(settings.selectedDictationMode == mode ? .accentColor : .secondary)
+
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(mode.displayName)
+                                Text(mode.summary)
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+
+                            Spacer()
+
+                            if settings.selectedDictationMode == mode {
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundColor(.accentColor)
+                            }
+                        }
+                        .contentShape(Rectangle())
                     }
+                    .buttonStyle(.plain)
                 }
+            } header: {
+                Text("Dictation Mode")
+            } footer: {
+                Text("How your speech is turned into text. You can also switch modes anytime from the menu bar popover.")
             }
 
-            Section(header: Text("Mode Instructions").font(.headline)) {
-                if settings.selectedDictationMode == .custom {
+            if settings.selectedDictationMode == .custom {
+                Section {
                     TextEditor(text: $settings.customPrompt)
-                        .font(.system(.body, design: .monospaced))
-                        .frame(height: 140)
-                        .border(Color.secondary.opacity(0.2), width: 1)
-                } else {
-                    ScrollView {
+                        .font(.body)
+                        .frame(height: 130)
+                        .accessibilityLabel("Custom prompt")
+                } header: {
+                    Text("Custom Prompt")
+                } footer: {
+                    Text("Instructions sent to Gemini along with your audio.")
+                }
+            } else {
+                Section {
+                    DisclosureGroup("System Prompt") {
                         Text(settings.selectedDictationMode.defaultPrompt)
                             .font(.caption)
                             .foregroundColor(.secondary)
-                            .padding(8)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .frame(height: 140)
-                    .background(Color.primary.opacity(0.04))
-                    .cornerRadius(6)
+                } header: {
+                    Text("Mode Instructions")
                 }
             }
         }
@@ -256,21 +317,80 @@ public struct SettingsView: View {
 
     // MARK: - Vocabulary Tab
 
+    private var vocabularyTerms: [String] {
+        settings.customVocabulary
+            .components(separatedBy: "\n")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+    }
+
+    private func termBinding(at index: Int) -> Binding<String> {
+        Binding(
+            get: { index < vocabularyTerms.count ? vocabularyTerms[index] : "" },
+            set: { newValue in
+                var terms = vocabularyTerms
+                guard terms.indices.contains(index) else { return }
+                terms[index] = newValue.trimmingCharacters(in: .whitespaces)
+                settings.customVocabulary = terms.joined(separator: "\n")
+            }
+        )
+    }
+
+    private func addVocabularyTerm() {
+        let term = newVocabularyTerm.trimmingCharacters(in: .whitespaces)
+        guard !term.isEmpty else { return }
+        var terms = vocabularyTerms
+        terms.append(term)
+        settings.customVocabulary = terms.joined(separator: "\n")
+        newVocabularyTerm = ""
+    }
+
+    private func removeVocabularyTerm(at index: Int) {
+        var terms = vocabularyTerms
+        guard terms.indices.contains(index) else { return }
+        terms.remove(at: index)
+        settings.customVocabulary = terms.joined(separator: "\n")
+    }
+
     private var vocabularyTab: some View {
-        Form {
-            Section(header: Text("Custom Vocabulary & Jargon").font(.headline)) {
-                Text("Add domain-specific jargon, acronyms, company names, or unusual spellings to guide Gemini 3.5 Transcribe.")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+        groupedForm {
+            Section {
+                if vocabularyTerms.isEmpty {
+                    Text("No custom terms yet.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
 
-                TextEditor(text: $settings.customVocabulary)
-                    .font(.system(.body, design: .monospaced))
-                    .frame(height: 180)
-                    .border(Color.secondary.opacity(0.2), width: 1)
+                ForEach(vocabularyTerms.indices, id: \.self) { index in
+                    HStack(spacing: 6) {
+                        TextField("Term", text: termBinding(at: index))
+                            .textFieldStyle(.roundedBorder)
 
-                Text("Example: Jigglypuff, Wispr Flow, Kubernetes, PyTorch, SwiftUI, GraphQL")
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
+                        Button(action: { removeVocabularyTerm(at: index) }) {
+                            Image(systemName: "minus.circle.fill")
+                                .foregroundColor(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Remove term")
+                    }
+                }
+
+                HStack(spacing: 6) {
+                    TextField("Add a term…", text: $newVocabularyTerm)
+                        .textFieldStyle(.roundedBorder)
+                        .onSubmit(addVocabularyTerm)
+
+                    Button(action: addVocabularyTerm) {
+                        Image(systemName: "plus.circle.fill")
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(newVocabularyTerm.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .help("Add term")
+                }
+            } header: {
+                Text("Custom Vocabulary & Jargon")
+            } footer: {
+                Text("Domain-specific jargon, acronyms, company names, or unusual spellings that guide transcription. Example: Jigglypuff, Kubernetes, PyTorch, SwiftUI.")
             }
         }
     }
@@ -278,71 +398,71 @@ public struct SettingsView: View {
     // MARK: - Permissions Tab
 
     private var permissionsTab: some View {
-        VStack(spacing: 16) {
-            // Microphone Permission Card
-            HStack {
-                Image(systemName: "mic.fill")
-                    .font(.system(size: 24))
-                    .foregroundColor(permissions.isMicrophoneGranted ? .green : .orange)
-                    .frame(width: 40)
+        groupedForm {
+            permissionSection(
+                iconName: "mic.fill",
+                title: "Microphone Access",
+                detail: "Required to record your voice.",
+                granted: permissions.isMicrophoneGranted,
+                actionLabel: "Grant Access",
+                action: { permissions.requestMicrophoneAccess { _ in } }
+            )
 
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Microphone Access")
-                        .font(.headline)
-                    Text(permissions.isMicrophoneGranted ? "Microphone access is enabled." : "Required for voice recording.")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-
-                Spacer()
-
-                if permissions.isMicrophoneGranted {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(.green)
-                } else {
-                    Button("Grant Access") {
-                        permissions.requestMicrophoneAccess { _ in }
-                    }
-                }
-            }
-            .padding(12)
-            .background(Color.primary.opacity(0.04))
-            .cornerRadius(8)
-
-            // Accessibility Permission Card
-            HStack {
-                Image(systemName: "hand.raised.fill")
-                    .font(.system(size: 24))
-                    .foregroundColor(permissions.isAccessibilityGranted ? .green : .orange)
-                    .frame(width: 40)
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Accessibility Access")
-                        .font(.headline)
-                    Text(permissions.isAccessibilityGranted ? "Accessibility access is enabled." : "Required to auto-type text into other applications.")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-
-                Spacer()
-
-                if permissions.isAccessibilityGranted {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(.green)
-                } else {
-                    Button("Open System Settings") {
-                        permissions.requestAccessibilityAccess()
-                        permissions.openAccessibilitySettings()
-                    }
-                }
-            }
-            .padding(12)
-            .background(Color.primary.opacity(0.04))
-            .cornerRadius(8)
-
-            Spacer()
+            permissionSection(
+                iconName: "hand.raised.fill",
+                title: "Accessibility Access",
+                detail: "Required to auto-type text into other applications.",
+                granted: permissions.isAccessibilityGranted,
+                actionLabel: "Open System Settings",
+                action: {
+                    permissions.requestAccessibilityAccess()
+                    permissions.openAccessibilitySettings()
+                },
+                footer: "If Jigglypuff is already toggled on in System Settings but not detected, the entry is stale: remove it from the list (− button), then re-add /Applications/Jigglypuff.app and toggle it on."
+            )
         }
     }
+
+    private func permissionSection(iconName: String,
+                                   title: String,
+                                   detail: String,
+                                   granted: Bool,
+                                   actionLabel: String,
+                                   action: @escaping () -> Void,
+                                   footer: String? = nil) -> some View {
+        Section {
+            HStack(spacing: 12) {
+                Image(systemName: iconName)
+                    .font(.system(size: 20))
+                    .foregroundColor(granted ? .green : .orange)
+                    .frame(width: 28)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.headline)
+                    Text(detail)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+
+                Spacer()
+
+                if granted {
+                    Label("Enabled", systemImage: "checkmark.circle.fill")
+                        .font(.callout)
+                        .foregroundColor(.green)
+                } else {
+                    Button(actionLabel, action: action)
+                }
+            }
+        } footer: {
+            if let footer {
+                Text(footer)
+            }
+        }
+    }
+
+    // MARK: - API Test
 
     private func testConnection() {
         isTestingAPI = true
@@ -357,16 +477,11 @@ public struct SettingsView: View {
                     model: settings.selectedModel,
                     mode: .smartFlow
                 )
-                DispatchQueue.main.async {
-                    self.isTestingAPI = false
-                    self.testStatus = "✓ Success! Gemini API connected."
-                }
+                testStatus = "✓ Success! Gemini API connected."
             } catch {
-                DispatchQueue.main.async {
-                    self.isTestingAPI = false
-                    self.testStatus = "✗ Error: \(error.localizedDescription)"
-                }
+                testStatus = "✗ Error: \(error.localizedDescription)"
             }
+            isTestingAPI = false
         }
     }
 
@@ -398,5 +513,26 @@ public struct SettingsView: View {
         wavData.append(Data(bytes: &sub2, count: 4))
         wavData.append(pcmData)
         return wavData
+    }
+}
+
+/// A small keyboard key-cap badge.
+private struct KeyCap: View {
+    let label: String
+
+    init(_ label: String) {
+        self.label = label
+    }
+
+    var body: some View {
+        Text(label)
+            .font(.system(size: 11, weight: .medium, design: .monospaced))
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Color.primary.opacity(0.07), in: RoundedRectangle(cornerRadius: 5))
+            .overlay(
+                RoundedRectangle(cornerRadius: 5)
+                    .strokeBorder(Color.primary.opacity(0.12))
+            )
     }
 }
