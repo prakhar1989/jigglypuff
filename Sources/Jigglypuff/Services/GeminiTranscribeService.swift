@@ -26,22 +26,26 @@ public enum TranscribeError: LocalizedError, Sendable {
 
 /// Service handling transcription requests with Gemini.
 ///
-/// Two API paths are supported:
-/// - `gemini-3.5-transcribe`: Google's dedicated speech-to-text model, exposed via the
-///   Interactions API (`POST /v1beta/interactions`). Audio is uploaded through the Files API
-///   (resumable upload) and referenced by URI. Smart transcription (disfluency removal,
-///   self-correction resolution, formatting) and custom vocabulary are first-class
-///   configuration options of this model.
-/// - `gemini-2.5-flash`: general multimodal model via `:generateContent` with inline base64
-///   audio. This path is prompt-driven, so the rewriting dictation modes (Email,
-///   Bullet Points, Code, Custom) only take effect here.
+/// Uses Google's dedicated speech-to-text model through the Interactions API
+/// (`POST /v1beta/interactions`). Audio is uploaded through the Files API
+/// (resumable upload) and referenced by URI. Smart transcription (disfluency removal,
+/// self-correction resolution, formatting) and custom vocabulary are first-class
+/// configuration options of this model.
 public final class GeminiTranscribeService: Sendable {
     public static let shared = GeminiTranscribeService()
 
     private let baseURL = "https://generativelanguage.googleapis.com/v1beta"
     private let filesUploadURL = "https://generativelanguage.googleapis.com/upload/v1beta/files"
+    private let apiKeyProvider: @Sendable () -> String?
 
-    private init() {}
+    private init() {
+        self.apiKeyProvider = { KeychainHelper.shared.getAPIKey() }
+    }
+
+    /// Internal seam for deterministic service tests without mutating shared Keychain state.
+    init(apiKeyProvider: @escaping @Sendable () -> String?) {
+        self.apiKeyProvider = apiKeyProvider
+    }
 
     /// Transcribes audio data using the selected model.
     public func transcribe(audioData: Data,
@@ -54,39 +58,18 @@ public final class GeminiTranscribeService: Sendable {
             throw TranscribeError.emptyAudio
         }
 
-        guard let apiKey = KeychainHelper.shared.getAPIKey(), !apiKey.isEmpty else {
+        guard let apiKey = apiKeyProvider(), !apiKey.isEmpty else {
             throw TranscribeError.missingAPIKey
         }
 
-        switch model {
-        case .gemini35Transcribe:
-            do {
-                let result = try await transcribeWithInteractionsAPI(audioData: audioData,
-                                                                     apiKey: apiKey,
-                                                                     mode: mode,
-                                                                     customVocabulary: customVocabulary)
-                if !result.isEmpty {
-                    return result
-                }
-                print("Jigglypuff: Interactions API returned empty transcript. Trying fallback to generateContent...")
-            } catch {
-                print("Jigglypuff: Interactions API error (\(error.localizedDescription)). Trying fallback to generateContent...")
-            }
-            return try await transcribeWithGenerateContent(audioData: audioData,
-                                                           apiKey: apiKey,
-                                                           model: .gemini25Flash,
-                                                           mode: mode,
-                                                           customPrompt: customPrompt,
-                                                           customVocabulary: customVocabulary)
-
-        case .gemini25Flash:
-            return try await transcribeWithGenerateContent(audioData: audioData,
-                                                           apiKey: apiKey,
-                                                           model: model,
-                                                           mode: mode,
-                                                           customPrompt: customPrompt,
-                                                           customVocabulary: customVocabulary)
-        }
+        // The model parameter remains part of the service API for callers and history,
+        // while TranscribeModel currently exposes only the supported model.
+        _ = model
+        _ = customPrompt
+        return try await transcribeWithInteractionsAPI(audioData: audioData,
+                                                       apiKey: apiKey,
+                                                       mode: mode,
+                                                       customVocabulary: customVocabulary)
     }
 
     // MARK: - Gemini 3.5 Transcribe (Interactions API)
@@ -317,22 +300,6 @@ public final class GeminiTranscribeService: Sendable {
             }
         }
 
-        // 5. Candidates array (generateContent style fallback)
-        if let candidates = json["candidates"] as? [[String: Any]],
-           let firstCandidate = candidates.first,
-           let content = firstCandidate["content"] as? [String: Any],
-           let parts = content["parts"] as? [[String: Any]] {
-            var combined = ""
-            for part in parts {
-                if let text = part["text"] as? String {
-                    combined += text
-                }
-            }
-            if !combined.isEmpty {
-                return combined.trimmingCharacters(in: .whitespacesAndNewlines)
-            }
-        }
-
         return ""
     }
 
@@ -346,70 +313,6 @@ public final class GeminiTranscribeService: Sendable {
         _ = try await URLSession.shared.data(for: request)
     }
 
-    // MARK: - Gemini 2.5 Flash (generateContent with inline audio)
-
-    private func transcribeWithGenerateContent(audioData: Data,
-                                               apiKey: String,
-                                               model: TranscribeModel,
-                                               mode: DictationMode,
-                                               customPrompt: String?,
-                                               customVocabulary: String?) async throws -> String {
-        // Build prompt instructions
-        let promptText = buildPrompt(mode: mode, customPrompt: customPrompt, customVocabulary: customVocabulary)
-        let base64Audio = audioData.base64EncodedString()
-
-        let urlString = "\(baseURL)/models/\(model.rawValue):generateContent"
-        guard let url = URL(string: urlString) else {
-            throw TranscribeError.invalidResponse
-        }
-
-        // Construct Gemini REST Payload
-        let contentsParts: [[String: Any]] = [
-            [
-                "inline_data": [
-                    "mime_type": "audio/wav",
-                    "data": base64Audio
-                ]
-            ],
-            [
-                "text": promptText
-            ]
-        ]
-
-        let requestBody: [String: Any] = [
-            "contents": [
-                [
-                    "role": "user",
-                    "parts": contentsParts
-                ]
-            ],
-            "generationConfig": [
-                "temperature": 0.0,
-                "maxOutputTokens": 2048
-            ]
-        ]
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.timeoutInterval = 120
-        request.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONSerialization.data(withJSONObject: requestBody, options: [])
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw TranscribeError.invalidResponse
-        }
-
-        if !(200...299).contains(httpResponse.statusCode) {
-            let errorMsg = parseErrorMessage(data: data) ?? "HTTP \(httpResponse.statusCode)"
-            throw TranscribeError.apiError(statusCode: httpResponse.statusCode, message: errorMsg)
-        }
-
-        return try parseTranscriptionResponse(data: data)
-    }
-
     // MARK: - Shared helpers
 
     /// Splits a free-form vocabulary string (comma- or newline-separated) into individual terms.
@@ -421,41 +324,7 @@ public final class GeminiTranscribeService: Sendable {
             .filter { !$0.isEmpty }
     }
 
-    /// Constructs the prompt instruction combining dictation mode instructions and custom vocabulary
-    private func buildPrompt(mode: DictationMode, customPrompt: String?, customVocabulary: String?) -> String {
-        var baseInstruction = ""
-        if mode == .custom, let custom = customPrompt, !custom.isEmpty {
-            baseInstruction = custom
-        } else {
-            baseInstruction = mode.defaultPrompt
-        }
-
-        if let vocab = customVocabulary, !vocab.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            baseInstruction += "\n\nImportant specialized vocabulary and terminology: \(vocab)"
-        }
-
-        return baseInstruction
-    }
-
-    /// Parses Gemini generateContent JSON response
-    private func parseTranscriptionResponse(data: Data) throws -> String {
-        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw TranscribeError.invalidResponse
-        }
-
-        let transcript = extractTranscript(from: json)
-        guard !transcript.isEmpty else {
-            // If candidates exists but was empty
-            if json["candidates"] != nil {
-                return ""
-            }
-            throw TranscribeError.invalidResponse
-        }
-
-        return cleanTranscriptionOutput(transcript)
-    }
-
-    /// Cleans up any surrounding markdown block quotes or accidental meta responses
+    /// Cleans up any surrounding quotes in the returned transcript.
     private func cleanTranscriptionOutput(_ text: String) -> String {
         var cleaned = text
         // If output is enclosed in quotes, strip them

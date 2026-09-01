@@ -2,10 +2,36 @@ import Foundation
 import SwiftUI
 import Combine
 
+/// Stable, persisted identity for a user-selected audio input device.
+///
+/// The Core Audio device UID is preferred. Model/manufacturer/name metadata lets
+/// the app recover when a driver assigns a new UID after a device is reconnected.
+public struct AudioInputDeviceSelection: Codable, Hashable, Sendable {
+    public let uid: String?
+    public let modelUID: String?
+    public let manufacturer: String?
+    public let name: String?
+
+    public static let systemDefault = AudioInputDeviceSelection()
+
+    public init(uid: String? = nil,
+                modelUID: String? = nil,
+                manufacturer: String? = nil,
+                name: String? = nil) {
+        self.uid = uid
+        self.modelUID = modelUID
+        self.manufacturer = manufacturer
+        self.name = name
+    }
+
+    public var isSystemDefault: Bool {
+        uid == nil && modelUID == nil && manufacturer == nil && name == nil
+    }
+}
+
 /// Supported Gemini transcription models
 public enum TranscribeModel: String, CaseIterable, Identifiable, Codable, Sendable {
     case gemini35Transcribe = "gemini-3.5-transcribe"
-    case gemini25Flash = "gemini-2.5-flash"
 
     public var id: String { rawValue }
 
@@ -13,8 +39,6 @@ public enum TranscribeModel: String, CaseIterable, Identifiable, Codable, Sendab
         switch self {
         case .gemini35Transcribe:
             return "Gemini 3.5 Transcribe (Recommended)"
-        case .gemini25Flash:
-            return "Gemini 2.5 Flash"
         }
     }
 
@@ -22,8 +46,6 @@ public enum TranscribeModel: String, CaseIterable, Identifiable, Codable, Sendab
         switch self {
         case .gemini35Transcribe:
             return "Google's dedicated speech-to-text model with native smart self-correction, disfluency cleanup, and custom vocabulary support (Interactions API)."
-        case .gemini25Flash:
-            return "Fast multimodal model transcribing via generateContent. Required for the rewriting dictation modes (Email, Bullet Points, Code, Custom)."
         }
     }
 }
@@ -138,6 +160,8 @@ public enum HotkeyBehavior: String, CaseIterable, Identifiable, Codable, Sendabl
 public final class SettingsStore: ObservableObject {
     public static let shared = SettingsStore()
 
+    private static let recommendedDefaultsMigrationVersion = 1
+
     @Published public var apiKey: String {
         didSet {
             KeychainHelper.shared.saveAPIKey(apiKey)
@@ -210,37 +234,90 @@ public final class SettingsStore: ObservableObject {
         }
     }
 
-    /// UID of the selected CoreAudio input device; empty string means "use the system default input".
-    @Published public var audioInputDeviceUID: String {
+    /// Persisted identity of the selected Core Audio input device.
+    @Published public var audioInputDeviceSelection: AudioInputDeviceSelection {
         didSet {
-            UserDefaults.standard.set(audioInputDeviceUID, forKey: "audioInputDeviceUID")
+            persistAudioInputDeviceSelection()
+        }
+    }
+
+    /// Backward-compatible UID access; an empty string means System Default.
+    public var audioInputDeviceUID: String {
+        get { audioInputDeviceSelection.uid ?? "" }
+        set {
+            if newValue.isEmpty {
+                audioInputDeviceSelection = .systemDefault
+            } else {
+                audioInputDeviceSelection = AudioInputDeviceSelection(
+                    uid: newValue,
+                    modelUID: audioInputDeviceSelection.modelUID,
+                    manufacturer: audioInputDeviceSelection.manufacturer,
+                    name: audioInputDeviceSelection.name
+                )
+            }
         }
     }
 
     private init() {
+        let defaults = UserDefaults.standard
+        let shouldApplyRecommendedDefaults = defaults.integer(forKey: "recommendedDefaultsMigrationVersion") < Self.recommendedDefaultsMigrationVersion
+
         self.apiKey = KeychainHelper.shared.getAPIKey() ?? ""
 
         let modelRaw = UserDefaults.standard.string(forKey: "selectedModel") ?? TranscribeModel.gemini35Transcribe.rawValue
         self.selectedModel = TranscribeModel(rawValue: modelRaw) ?? .gemini35Transcribe
 
-        let modeRaw = UserDefaults.standard.string(forKey: "selectedDictationMode") ?? DictationMode.smartFlow.rawValue
+        let modeRaw = shouldApplyRecommendedDefaults
+            ? DictationMode.smartFlow.rawValue
+            : defaults.string(forKey: "selectedDictationMode") ?? DictationMode.smartFlow.rawValue
         self.selectedDictationMode = DictationMode(rawValue: modeRaw) ?? .smartFlow
 
         self.customPrompt = UserDefaults.standard.string(forKey: "customPrompt") ?? DictationMode.custom.defaultPrompt
         self.customVocabulary = UserDefaults.standard.string(forKey: "customVocabulary") ?? ""
 
-        let hotkeyRaw = UserDefaults.standard.string(forKey: "hotkeyBehavior") ?? HotkeyBehavior.toggle.rawValue
-        self.hotkeyBehavior = HotkeyBehavior(rawValue: hotkeyRaw) ?? .toggle
+        let hotkeyRaw = shouldApplyRecommendedDefaults
+            ? HotkeyBehavior.pushToTalk.rawValue
+            : defaults.string(forKey: "hotkeyBehavior") ?? HotkeyBehavior.pushToTalk.rawValue
+        self.hotkeyBehavior = HotkeyBehavior(rawValue: hotkeyRaw) ?? .pushToTalk
 
-        self.playSoundEffects = UserDefaults.standard.object(forKey: "playSoundEffects") as? Bool ?? true
-        self.autoInsertText = UserDefaults.standard.object(forKey: "autoInsertText") as? Bool ?? true
-        self.copyToClipboardAlways = UserDefaults.standard.object(forKey: "copyToClipboardAlways") as? Bool ?? true
-        self.showFloatingHUD = UserDefaults.standard.object(forKey: "showFloatingHUD") as? Bool ?? true
-        self.audioInputDeviceUID = UserDefaults.standard.string(forKey: "audioInputDeviceUID") ?? ""
+        self.playSoundEffects = defaults.object(forKey: "playSoundEffects") as? Bool ?? true
+        self.autoInsertText = defaults.object(forKey: "autoInsertText") as? Bool ?? true
+        self.copyToClipboardAlways = shouldApplyRecommendedDefaults
+            ? false
+            : defaults.object(forKey: "copyToClipboardAlways") as? Bool ?? false
+        self.showFloatingHUD = defaults.object(forKey: "showFloatingHUD") as? Bool ?? true
+        if let data = UserDefaults.standard.data(forKey: "audioInputDeviceSelection"),
+           let selection = try? JSONDecoder().decode(AudioInputDeviceSelection.self, from: data) {
+            self.audioInputDeviceSelection = selection
+        } else {
+            // Migrate the original UID-only preference. The richer identity is
+            // refreshed the next time the user selects a currently available device.
+            let legacyUID = UserDefaults.standard.string(forKey: "audioInputDeviceUID") ?? ""
+            self.audioInputDeviceSelection = legacyUID.isEmpty
+                ? .systemDefault
+                : AudioInputDeviceSelection(uid: legacyUID)
+        }
 
         // Default shortcut: Option + Space (keyCode 49, optionKey 0x0800)
         self.hotkeyKeyCode = UInt32(UserDefaults.standard.object(forKey: "hotkeyKeyCode") as? Int ?? 49) // 49 = Space
         self.hotkeyModifiers = UInt32(UserDefaults.standard.object(forKey: "hotkeyModifiers") as? Int ?? 0x0800) // optionKey
+
+        if shouldApplyRecommendedDefaults {
+            defaults.set(Self.recommendedDefaultsMigrationVersion, forKey: "recommendedDefaultsMigrationVersion")
+            defaults.set(self.selectedDictationMode.rawValue, forKey: "selectedDictationMode")
+            defaults.set(self.hotkeyBehavior.rawValue, forKey: "hotkeyBehavior")
+            defaults.set(self.copyToClipboardAlways, forKey: "copyToClipboardAlways")
+        }
+
+        persistAudioInputDeviceSelection()
+    }
+
+    private func persistAudioInputDeviceSelection() {
+        if let data = try? JSONEncoder().encode(audioInputDeviceSelection) {
+            UserDefaults.standard.set(data, forKey: "audioInputDeviceSelection")
+        }
+        // Keep the legacy key synchronized for compatibility with older builds.
+        UserDefaults.standard.set(audioInputDeviceSelection.uid ?? "", forKey: "audioInputDeviceUID")
     }
 
     /// Returns prompt instructions for the currently selected dictation mode.

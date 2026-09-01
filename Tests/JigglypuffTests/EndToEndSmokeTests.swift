@@ -21,28 +21,32 @@ final class EndToEndSmokeTests: XCTestCase {
     func testFullDictationPipelineEndToEndSmokeTest() async throws {
         let appState = AppState.shared
         let settings = SettingsStore.shared
-        settings.selectedModel = .gemini25Flash
+        settings.selectedModel = .gemini35Transcribe
         settings.selectedDictationMode = .smartFlow
 
         let expectedTranscribedText = "This is an end-to-end smoke test transcription."
 
-        // 1. Mock Gemini API generateContent response
+        // 1. Mock Gemini file upload and Interactions API responses
         URLProtocol.registerClass(MockURLProtocol.self)
         defer { URLProtocol.unregisterClass(MockURLProtocol.self) }
 
         MockURLProtocol.requestHandler = { request in
+            if request.url?.absoluteString.contains("upload") == true {
+                if request.value(forHTTPHeaderField: "X-Goog-Upload-Command") == "start" {
+                    let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: ["x-goog-upload-url": "https://generativelanguage.googleapis.com/upload/session/123"])!
+                    return (response, Data())
+                }
+
+                let fileJSON: [String: Any] = ["file": ["uri": "https://generativelanguage.googleapis.com/v1beta/files/test123", "name": "files/test123", "state": "ACTIVE"]]
+                let data = try! JSONSerialization.data(withJSONObject: fileJSON)
+                let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!
+                return (response, data)
+            }
+
             let responseJSON: [String: Any] = [
-                "candidates": [
-                    [
-                        "content": [
-                            "parts": [
-                                ["text": expectedTranscribedText]
-                            ],
-                            "role": "model"
-                        ],
-                        "finishReason": "STOP"
-                    ]
-                ]
+                "id": "interactions/abc",
+                "status": "completed",
+                "output_text": expectedTranscribedText
             ]
             let data = try! JSONSerialization.data(withJSONObject: responseJSON)
             let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!
@@ -130,6 +134,12 @@ final class EndToEndSmokeTests: XCTestCase {
         defer { URLProtocol.unregisterClass(MockURLProtocol.self) }
 
         MockURLProtocol.requestHandler = { request in
+            if request.url?.absoluteString.contains("upload") == true,
+               request.value(forHTTPHeaderField: "X-Goog-Upload-Command") == "start" {
+                let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: ["x-goog-upload-url": "https://generativelanguage.googleapis.com/upload/session/123"])!
+                return (response, Data())
+            }
+
             let errorJSON: [String: Any] = [
                 "error": [
                     "code": 400,
@@ -146,7 +156,7 @@ final class EndToEndSmokeTests: XCTestCase {
         do {
             _ = try await GeminiTranscribeService.shared.transcribe(
                 audioData: validWAV,
-                model: .gemini25Flash,
+                model: .gemini35Transcribe,
                 mode: .smartFlow
             )
             XCTFail("Expected API error")

@@ -18,7 +18,7 @@ public final class TextInsertionService {
 
     /// Inserts text into the currently active application using simulated paste (Cmd+V).
     @discardableResult
-    public func insertText(_ text: String, autoInsert: Bool = true, copyToClipboardAlways: Bool = true) -> InsertionResult {
+    public func insertText(_ text: String, autoInsert: Bool = true, copyToClipboardAlways: Bool = false) -> InsertionResult {
         guard !text.isEmpty else { return .copiedToClipboardOnly }
 
         let pasteboard = NSPasteboard.general

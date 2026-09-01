@@ -45,7 +45,7 @@ private final class AudioConverterBufferProvider: @unchecked Sendable {
     }
 }
 
-private final class ResilientAudioConverter: @unchecked Sendable {
+final class ResilientAudioConverter: @unchecked Sendable {
     private var converter: AVAudioConverter?
     private var cachedInputFormat: AVAudioFormat?
     private let targetFormat: AVAudioFormat
@@ -55,22 +55,23 @@ private final class ResilientAudioConverter: @unchecked Sendable {
     }
 
     func process(buffer: AVAudioPCMBuffer) -> (pcmData: Data?, audioLevel: Float) {
-        let inputFormat = buffer.format
-        guard inputFormat.sampleRate > 0, buffer.frameLength > 0 else {
+        let sourceBuffer = monoBufferSelectingLoudestChannel(from: buffer)
+        let inputFormat = sourceBuffer.format
+        guard inputFormat.sampleRate > 0, sourceBuffer.frameLength > 0 else {
             return (nil, 0.0)
         }
 
         // 1. Calculate RMS audio level with voice-activity noise gate
         // Ambient room noise sits around -55dB to -44dB; speech sits between -36dB and -10dB.
         var rawRms: Float = 0.0
-        if let floatChannelData = buffer.floatChannelData {
-            vDSP_rmsqv(floatChannelData[0], 1, &rawRms, vDSP_Length(buffer.frameLength))
-        } else if let int16Data = buffer.int16ChannelData {
-            var floatSamples = [Float](repeating: 0, count: Int(buffer.frameLength))
-            vDSP_vflt16(int16Data[0], 1, &floatSamples, 1, vDSP_Length(buffer.frameLength))
+        if let floatChannelData = sourceBuffer.floatChannelData {
+            vDSP_rmsqv(floatChannelData[0], 1, &rawRms, vDSP_Length(sourceBuffer.frameLength))
+        } else if let int16Data = sourceBuffer.int16ChannelData {
+            var floatSamples = [Float](repeating: 0, count: Int(sourceBuffer.frameLength))
+            vDSP_vflt16(int16Data[0], 1, &floatSamples, 1, vDSP_Length(sourceBuffer.frameLength))
             var scale: Float = 1.0 / 32768.0
-            vDSP_vsmul(floatSamples, 1, &scale, &floatSamples, 1, vDSP_Length(buffer.frameLength))
-            vDSP_rmsqv(floatSamples, 1, &rawRms, vDSP_Length(buffer.frameLength))
+            vDSP_vsmul(floatSamples, 1, &scale, &floatSamples, 1, vDSP_Length(sourceBuffer.frameLength))
+            vDSP_rmsqv(floatSamples, 1, &rawRms, vDSP_Length(sourceBuffer.frameLength))
         }
 
         let noiseFloorDb: Float = -42.0 // Noise gate: ambient room noise below -42dB produces 0.0
@@ -87,8 +88,8 @@ private final class ResilientAudioConverter: @unchecked Sendable {
         }
 
         // 2. Fast path: if incoming format already matches target format (16kHz 1ch Float32)
-        if inputFormat == targetFormat, let floatData = buffer.floatChannelData {
-            let frameLength = Int(buffer.frameLength)
+        if inputFormat == targetFormat, let floatData = sourceBuffer.floatChannelData {
+            let frameLength = Int(sourceBuffer.frameLength)
             var int16Data = Data(capacity: frameLength * 2)
             for i in 0..<frameLength {
                 let sample = max(-1.0, min(1.0, floatData[0][i]))
@@ -104,6 +105,15 @@ private final class ResilientAudioConverter: @unchecked Sendable {
                 print("Jigglypuff Audio: Could not create audio converter from \(inputFormat) to \(targetFormat)")
                 return (nil, normalizedLevel)
             }
+            // Fall back to the first real input channel if an interleaved or non-Float32
+            // multichannel buffer could not be normalized above. This overrides layout
+            // remapping that may otherwise select a silent channel.
+            if inputFormat.channelCount > targetFormat.channelCount {
+                newConverter.channelMap = [0]
+            }
+            // Each tap callback supplies live audio that cannot be read ahead. Avoid
+            // converter priming requirements intended for file-backed input.
+            newConverter.primeMethod = .none
             self.converter = newConverter
             self.cachedInputFormat = inputFormat
         }
@@ -113,13 +123,13 @@ private final class ResilientAudioConverter: @unchecked Sendable {
         }
 
         let sampleRateRatio = targetFormat.sampleRate / inputFormat.sampleRate
-        let frameCapacity = AVAudioFrameCount(Double(buffer.frameLength) * sampleRateRatio) + 1024
+        let frameCapacity = AVAudioFrameCount(Double(sourceBuffer.frameLength) * sampleRateRatio) + 1024
         guard let convertedBuffer = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: frameCapacity) else {
             return (nil, normalizedLevel)
         }
 
         var error: NSError?
-        let provider = AudioConverterBufferProvider(buffer: buffer)
+        let provider = AudioConverterBufferProvider(buffer: sourceBuffer)
         let inputBlock: AVAudioConverterInputBlock = { _, outStatus in
             if provider.isExhausted {
                 outStatus.pointee = .noDataNow
@@ -154,17 +164,66 @@ private final class ResilientAudioConverter: @unchecked Sendable {
 
         return (int16Data, normalizedLevel)
     }
-}
 
-/// An audio input device available on this Mac.
-public struct AudioInputDevice: Identifiable, Hashable, Sendable {
-    public let id: AudioDeviceID
-    public let uid: String
-    public let name: String
-    public let isSystemDefault: Bool
+    /// Audio interfaces often expose several unrelated discrete inputs. Channel-layout
+    /// conversion can map such an interface to an absent mono channel and produce
+    /// digital silence, so select the channel carrying the strongest signal first.
+    private func monoBufferSelectingLoudestChannel(from buffer: AVAudioPCMBuffer) -> AVAudioPCMBuffer {
+        let format = buffer.format
+        let channelCount = Int(format.channelCount)
+        let frameCount = Int(buffer.frameLength)
+        guard channelCount > 1,
+              frameCount > 0,
+              !format.isInterleaved,
+              let inputChannels = buffer.floatChannelData,
+              let monoFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32,
+                                              sampleRate: format.sampleRate,
+                                              channels: 1,
+                                              interleaved: false),
+              let monoBuffer = AVAudioPCMBuffer(pcmFormat: monoFormat,
+                                                 frameCapacity: buffer.frameLength),
+              let monoChannel = monoBuffer.floatChannelData?[0] else {
+            return buffer
+        }
+
+        var loudestChannel = 0
+        var loudestRms: Float = -1
+        for channelIndex in 0..<channelCount {
+            var rms: Float = 0
+            vDSP_rmsqv(inputChannels[channelIndex],
+                       1,
+                       &rms,
+                       vDSP_Length(buffer.frameLength))
+            if rms > loudestRms {
+                loudestRms = rms
+                loudestChannel = channelIndex
+            }
+        }
+
+        monoBuffer.frameLength = buffer.frameLength
+        monoChannel.update(from: inputChannels[loudestChannel], count: frameCount)
+        return monoBuffer
+    }
 }
 
 /// Audio capture engine using AVAudioEngine, producing 16kHz Linear PCM WAV audio.
+private enum AudioRecorderError: LocalizedError {
+    case deviceUnavailable(String)
+    case deviceRouteFailed(String)
+    case inputUnavailable
+
+    var errorDescription: String? {
+        switch self {
+        case .deviceUnavailable(let reason):
+            return "The selected microphone is unavailable. \(reason)"
+        case .deviceRouteFailed(let reason):
+            return "Could not route audio to the selected microphone. \(reason)"
+        case .inputUnavailable:
+            return "The microphone input is unavailable. Please check macOS microphone permissions and audio input settings."
+        }
+    }
+}
+
 @MainActor
 public final class AudioRecorder: ObservableObject {
     public static let shared = AudioRecorder()
@@ -179,6 +238,13 @@ public final class AudioRecorder: ObservableObject {
 
     private init() {}
 
+    /// Location used by the temporary diagnostic build to preserve captured WAV files.
+    public static func debugRecordingsDirectoryURL() -> URL? {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
+            .appendingPathComponent("Jigglypuff", isDirectory: true)
+            .appendingPathComponent("DebugRecordings", isDirectory: true)
+    }
+
     /// Starts recording audio from default or configured input device.
     public func startRecording() throws {
         stopEngine()
@@ -187,18 +253,18 @@ public final class AudioRecorder: ObservableObject {
         let engine = AVAudioEngine()
         let input = engine.inputNode
 
-        // Route capture to the input device selected in Settings (empty = system default)
-        let selectedDeviceUID = SettingsStore.shared.audioInputDeviceUID
-        if !selectedDeviceUID.isEmpty,
-           let selectedDeviceID = AudioRecorder.inputDeviceID(forUID: selectedDeviceUID),
-           let audioUnit = input.audioUnit {
-            var deviceID = selectedDeviceID
-            AudioUnitSetProperty(audioUnit,
-                                 kAudioOutputUnitProperty_CurrentDevice,
-                                 kAudioUnitScope_Global,
-                                 0,
-                                 &deviceID,
-                                 UInt32(MemoryLayout<AudioDeviceID>.size))
+        // Resolve the persisted identity against the devices that exist now. If a
+        // device was unplugged, keep the preference but explicitly use System Default
+        // for this recording so a reconnect can restore it later.
+        let selection = SettingsStore.shared.audioInputDeviceSelection
+        let route = AudioInputDeviceManager.resolve(selection)
+        var expectedDeviceID: AudioDeviceID?
+
+        if let selectedDevice = route.device {
+            expectedDeviceID = selectedDevice.id
+            print("[DEBUG-AUDIO] Resolved \(route.reason): \(selectedDevice.name) [uid=\(selectedDevice.uid), id=\(selectedDevice.id)].")
+        } else {
+            print("[DEBUG-AUDIO] Using System Default (\(route.reason)).")
         }
 
         // Target format: 16kHz Mono Float32 for engine conversion
@@ -212,17 +278,88 @@ public final class AudioRecorder: ObservableObject {
         let converter = ResilientAudioConverter(targetFormat: targetFormat)
         let storage = self.bufferStorage
 
-        // Install audio tap. Handler must come from a nonisolated factory —
-        // the tap runs on AVAudioEngine's realtime thread, and a closure inheriting
-        // MainActor isolation crashes there with SIGTRAP.
         let bufferSize: AVAudioFrameCount = 1024
+
+        // AVAudioEngine enables input I/O only when its graph is active. Use a
+        // temporary tap to initialize the audio unit, then remove it before changing
+        // devices. A tap installed before the change retains the old device's channel
+        // format (for example FM3's 4 channels when switching to a mono microphone),
+        // which can make the eventual mono recording silent.
+        if let selectedDevice = route.device {
+            input.installTap(onBus: 0,
+                             bufferSize: bufferSize,
+                             format: nil,
+                             block: { _, _ in })
+            engine.prepare()
+            do {
+                try engine.start()
+            } catch {
+                input.removeTap(onBus: 0)
+                throw error
+            }
+
+            engine.stop()
+            input.removeTap(onBus: 0)
+
+            guard let audioUnit = input.audioUnit else {
+                throw AudioRecorderError.deviceRouteFailed("The input audio unit is unavailable.")
+            }
+
+            var deviceID = selectedDevice.id
+            let setStatus = AudioUnitSetProperty(audioUnit,
+                                                 kAudioOutputUnitProperty_CurrentDevice,
+                                                 kAudioUnitScope_Global,
+                                                 0,
+                                                 &deviceID,
+                                                 UInt32(MemoryLayout<AudioDeviceID>.size))
+            guard setStatus == noErr else {
+                throw AudioRecorderError.deviceRouteFailed("AudioUnitSetProperty returned status \(setStatus).")
+            }
+
+            engine.reset()
+        }
+
+        let routedHardwareFormat = input.inputFormat(forBus: 0)
+        let routedTapFormat = input.outputFormat(forBus: 0)
+        print("[DEBUG-AUDIO] Routed hardware format: \(routedHardwareFormat), tap format: \(routedTapFormat).")
+        guard routedTapFormat.sampleRate > 0, routedTapFormat.channelCount > 0 else {
+            throw AudioRecorderError.inputUnavailable
+        }
+
+        // Install the real tap only after routing and format negotiation. Handler must
+        // come from a nonisolated factory because AVAudioEngine invokes it on a
+        // realtime thread; inheriting MainActor isolation crashes there with SIGTRAP.
         input.installTap(onBus: 0,
                          bufferSize: bufferSize,
                          format: nil,
                          block: makeTapHandler(converter: converter, storage: storage))
 
         engine.prepare()
-        try engine.start()
+        do {
+            try engine.start()
+        } catch {
+            input.removeTap(onBus: 0)
+            throw error
+        }
+
+        if let audioUnit = input.audioUnit {
+            let actualDeviceID = currentDeviceID(of: audioUnit)
+            let actualDeviceDescription = actualDeviceID.map { String($0) } ?? "unknown"
+            print("[DEBUG-AUDIO] Audio unit current device ID after engine start: \(actualDeviceDescription).")
+            if let expectedDeviceID, actualDeviceID != expectedDeviceID {
+                input.removeTap(onBus: 0)
+                engine.stop()
+                throw AudioRecorderError.deviceRouteFailed("Expected device \(expectedDeviceID), but the engine is using \(actualDeviceDescription).")
+            }
+        }
+        let activeHardwareFormat = input.inputFormat(forBus: 0)
+        let activeTapFormat = input.outputFormat(forBus: 0)
+        print("[DEBUG-AUDIO] Audio engine started. Hardware format: \(activeHardwareFormat), tap format: \(activeTapFormat), target format: \(targetFormat).")
+        guard activeTapFormat.sampleRate > 0, activeTapFormat.channelCount > 0 else {
+            input.removeTap(onBus: 0)
+            engine.stop()
+            throw AudioRecorderError.inputUnavailable
+        }
 
         self.audioEngine = engine
         self.inputNode = input
@@ -255,11 +392,13 @@ public final class AudioRecorder: ObservableObject {
         self.isRecording = false
         self.audioLevel = 0.0
 
-        guard !rawData.isEmpty else {
-            return Data()
-        }
+        let wavData = createWAVData(from: rawData, sampleRate: Int(targetSampleRate), channels: 1, bitsPerSample: 16)
+        saveDebugRecording(wavData, pcmByteCount: rawData.count)
+        print("[DEBUG-AUDIO] Capture stopped. Converted PCM bytes: \(rawData.count), WAV bytes: \(wavData.count).")
 
-        return createWAVData(from: rawData, sampleRate: Int(targetSampleRate), channels: 1, bitsPerSample: 16)
+        // Keep the existing empty-audio behavior for transcription while preserving
+        // the diagnostic WAV header when no samples were captured.
+        return rawData.isEmpty ? Data() : wavData
     }
 
     /// Cancels recording and discards audio buffer.
@@ -281,84 +420,48 @@ public final class AudioRecorder: ObservableObject {
         inputNode = nil
     }
 
+    private func saveDebugRecording(_ wavData: Data, pcmByteCount: Int) {
+        guard let directoryURL = Self.debugRecordingsDirectoryURL() else {
+            print("[DEBUG-AUDIO] Could not determine the debug recordings directory.")
+            return
+        }
+
+        do {
+            try FileManager.default.createDirectory(at: directoryURL,
+                                                     withIntermediateDirectories: true,
+                                                     attributes: nil)
+            let timestamp = Int(Date().timeIntervalSince1970 * 1000)
+            let filename = "recording-\(timestamp)-\(UUID().uuidString.prefix(8)).wav"
+            let fileURL = directoryURL.appendingPathComponent(filename)
+            try wavData.write(to: fileURL, options: .atomic)
+            print("[DEBUG-AUDIO] Saved capture (\(pcmByteCount) PCM bytes) to \(fileURL.path)")
+        } catch {
+            print("[DEBUG-AUDIO] Failed to save capture: \(error.localizedDescription)")
+        }
+    }
+
+    private func currentDeviceID(of audioUnit: AudioUnit) -> AudioDeviceID? {
+        var deviceID = AudioDeviceID(0)
+        var dataSize = UInt32(MemoryLayout<AudioDeviceID>.size)
+        let status = AudioUnitGetProperty(audioUnit,
+                                          kAudioOutputUnitProperty_CurrentDevice,
+                                          kAudioUnitScope_Global,
+                                          0,
+                                          &deviceID,
+                                          &dataSize)
+        return status == noErr && deviceID != 0 ? deviceID : nil
+    }
+
     // MARK: - Input device enumeration
 
     /// Lists all audio devices with at least one input channel (built-in, USB, Bluetooth, virtual).
     nonisolated public static func availableInputDevices() -> [AudioInputDevice] {
-        var address = AudioObjectPropertyAddress(
-            mSelector: kAudioHardwarePropertyDevices,
-            mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: AudioObjectPropertyElement(kAudioObjectPropertyElementMain)
-        )
-
-        let systemObject = AudioObjectID(kAudioObjectSystemObject)
-        var dataSize: UInt32 = 0
-        guard AudioObjectGetPropertyDataSize(systemObject, &address, 0, nil, &dataSize) == noErr else { return [] }
-
-        var deviceIDs = [AudioDeviceID](repeating: 0, count: Int(dataSize) / MemoryLayout<AudioDeviceID>.size)
-        guard AudioObjectGetPropertyData(systemObject, &address, 0, nil, &dataSize, &deviceIDs) == noErr else { return [] }
-
-        let defaultID = defaultInputDeviceID()
-        return deviceIDs.compactMap { deviceID in
-            guard inputChannelCount(of: deviceID) > 0,
-                  let uid = stringProperty(of: deviceID, selector: kAudioDevicePropertyDeviceUID),
-                  let name = stringProperty(of: deviceID, selector: kAudioObjectPropertyName) else {
-                return nil
-            }
-            return AudioInputDevice(id: deviceID, uid: uid, name: name, isSystemDefault: deviceID == defaultID)
-        }
-        .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        AudioInputDeviceManager.enumerateInputDevices()
     }
 
     /// Resolves a persisted device UID to its current AudioDeviceID, if the device is still attached.
     nonisolated public static func inputDeviceID(forUID uid: String) -> AudioDeviceID? {
         availableInputDevices().first(where: { $0.uid == uid })?.id
-    }
-
-    nonisolated private static func defaultInputDeviceID() -> AudioDeviceID? {
-        var address = AudioObjectPropertyAddress(
-            mSelector: kAudioHardwarePropertyDefaultInputDevice,
-            mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: AudioObjectPropertyElement(kAudioObjectPropertyElementMain)
-        )
-        var deviceID = AudioDeviceID(0)
-        var dataSize = UInt32(MemoryLayout<AudioDeviceID>.size)
-        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &dataSize, &deviceID) == noErr,
-              deviceID != 0 else { return nil }
-        return deviceID
-    }
-
-    /// Total number of input channels a device exposes (0 for output-only devices).
-    nonisolated private static func inputChannelCount(of deviceID: AudioDeviceID) -> Int {
-        var address = AudioObjectPropertyAddress(
-            mSelector: kAudioDevicePropertyStreamConfiguration,
-            mScope: kAudioObjectPropertyScopeInput,
-            mElement: AudioObjectPropertyElement(kAudioObjectPropertyElementMain)
-        )
-        var dataSize: UInt32 = 0
-        guard AudioObjectGetPropertyDataSize(deviceID, &address, 0, nil, &dataSize) == noErr, dataSize > 0 else { return 0 }
-
-        let bufferList = UnsafeMutablePointer<AudioBufferList>.allocate(capacity: Int(dataSize))
-        defer { bufferList.deallocate() }
-        guard AudioObjectGetPropertyData(deviceID, &address, 0, nil, &dataSize, bufferList) == noErr else { return 0 }
-
-        return UnsafeMutableAudioBufferListPointer(bufferList).reduce(0) { $0 + Int($1.mNumberChannels) }
-    }
-
-    /// Reads a CFString property (name, UID, ...) from an audio device.
-    nonisolated private static func stringProperty(of deviceID: AudioDeviceID, selector: AudioObjectPropertySelector) -> String? {
-        var address = AudioObjectPropertyAddress(
-            mSelector: selector,
-            mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: AudioObjectPropertyElement(kAudioObjectPropertyElementMain)
-        )
-        var value: CFString = "" as CFString
-        var dataSize = UInt32(MemoryLayout<CFString>.size)
-        let status = withUnsafeMutablePointer(to: &value) { pointer in
-            AudioObjectGetPropertyData(deviceID, &address, 0, nil, &dataSize, pointer)
-        }
-        guard status == noErr else { return nil }
-        return value as String
     }
 
     /// Wraps raw 16-bit PCM data in a standard RIFF/WAV header

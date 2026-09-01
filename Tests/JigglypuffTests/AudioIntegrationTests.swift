@@ -15,8 +15,6 @@ final class AudioIntegrationTests: XCTestCase {
             return
         }
         
-        let recorder = AudioRecorder.shared
-        // Test via AudioRecorder and buffer capture
         guard let buffer = AVAudioPCMBuffer(pcmFormat: inputFormat, frameCapacity: 4800) else {
             XCTFail("Failed to create input buffer")
             return
@@ -29,9 +27,97 @@ final class AudioIntegrationTests: XCTestCase {
             buffer.floatChannelData?[0][i] = sample
             buffer.floatChannelData?[1][i] = sample
         }
-        
-        let pcmData = AudioRecorder.shared.stopRecording() // Clean slate
-        XCTAssertTrue(pcmData.isEmpty || pcmData.count == 0)
+
+        let converter = ResilientAudioConverter(targetFormat: targetFormat)
+        let result = converter.process(buffer: buffer)
+
+        let pcmData = try XCTUnwrap(result.pcmData)
+        XCTAssertGreaterThan(pcmData.count, 0)
+
+        let peak = pcmData.withUnsafeBytes { rawBuffer -> Int16 in
+            let samples = rawBuffer.bindMemory(to: Int16.self)
+            return samples.reduce(Int16(0)) { currentPeak, sample in
+                max(currentPeak, sample.magnitude > currentPeak.magnitude ? sample : currentPeak)
+            }
+        }
+        XCTAssertGreaterThan(peak.magnitude, 1_000, "Converted PCM should retain the input tone")
+        XCTAssertGreaterThan(result.audioLevel, 0.0)
+    }
+
+    func testStreamingConversionFrom48kStereoTo16kMono() throws {
+        guard let targetFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16000, channels: 1, interleaved: false),
+              let inputFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 48000, channels: 2, interleaved: false) else {
+            XCTFail("Failed to initialize AVAudioFormat")
+            return
+        }
+
+        let converter = ResilientAudioConverter(targetFormat: targetFormat)
+        var convertedPCM = Data()
+
+        // Match the recorder tap: 1,024-frame buffers arriving continuously.
+        for chunkIndex in 0..<200 {
+            guard let buffer = AVAudioPCMBuffer(pcmFormat: inputFormat, frameCapacity: 1024) else {
+                XCTFail("Failed to create input buffer")
+                return
+            }
+            buffer.frameLength = 1024
+
+            for frameIndex in 0..<1024 {
+                let absoluteFrame = chunkIndex * 1024 + frameIndex
+                let sample = Float(sin(2.0 * .pi * 440.0 * Double(absoluteFrame) / 48000.0) * 0.7)
+                buffer.floatChannelData?[0][frameIndex] = sample
+                buffer.floatChannelData?[1][frameIndex] = sample
+            }
+
+            if let pcmData = converter.process(buffer: buffer).pcmData {
+                convertedPCM.append(pcmData)
+            }
+        }
+
+        XCTAssertGreaterThan(convertedPCM.count, 0)
+        let peakMagnitude = convertedPCM.withUnsafeBytes { rawBuffer -> UInt16 in
+            rawBuffer.bindMemory(to: Int16.self).reduce(UInt16(0)) { peak, sample in
+                max(peak, sample.magnitude)
+            }
+        }
+        XCTAssertGreaterThan(peakMagnitude, 1_000, "Streaming conversion should retain the input tone")
+    }
+
+    func testConversionFromFourChannelInterfaceToMono() throws {
+        let discreteFourChannelTag = kAudioChannelLayoutTag_DiscreteInOrder | AudioChannelLayoutTag(4)
+        guard let channelLayout = AVAudioChannelLayout(layoutTag: discreteFourChannelTag),
+              let targetFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16000, channels: 1, interleaved: false) else {
+            XCTFail("Failed to initialize four-channel test audio")
+            return
+        }
+        let inputFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32,
+                                        sampleRate: 48000,
+                                        interleaved: false,
+                                        channelLayout: channelLayout)
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: inputFormat, frameCapacity: 4800) else {
+            XCTFail("Failed to initialize four-channel test buffer")
+            return
+        }
+        buffer.frameLength = 4800
+
+        // Model an interface such as FM3: speech is present on one discrete input
+        // channel (not necessarily channel 1) while the others are silent.
+        for frameIndex in 0..<4800 {
+            buffer.floatChannelData?[0][frameIndex] = 0
+            buffer.floatChannelData?[1][frameIndex] = 0
+            buffer.floatChannelData?[2][frameIndex] = Float(sin(2.0 * .pi * 440.0 * Double(frameIndex) / 48000.0) * 0.7)
+            buffer.floatChannelData?[3][frameIndex] = 0
+        }
+
+        let result = ResilientAudioConverter(targetFormat: targetFormat).process(buffer: buffer)
+        let pcmData = try XCTUnwrap(result.pcmData)
+        let peakMagnitude = pcmData.withUnsafeBytes { rawBuffer -> UInt16 in
+            rawBuffer.bindMemory(to: Int16.self).reduce(UInt16(0)) { peak, sample in
+                max(peak, sample.magnitude)
+            }
+        }
+
+        XCTAssertGreaterThan(peakMagnitude, 1_000, "A discrete multichannel input must not downmix to silence")
     }
 
     func testResilientAudioConverterAcrossMultipleSampleRatesAndChannels() throws {

@@ -4,9 +4,9 @@ import SwiftUI
 public struct SettingsView: View {
     @ObservedObject var settings = SettingsStore.shared
     @ObservedObject var permissions = PermissionManager.shared
+    @ObservedObject var inputDeviceManager = AudioInputDeviceManager.shared
 
     @State private var selectedTab: SettingsTab = .general
-    @State private var inputDevices: [AudioInputDevice] = AudioRecorder.availableInputDevices()
     @State private var showAPIKey: Bool = false
     @State private var testStatus: String? = nil
     @State private var isTestingAPI: Bool = false
@@ -68,7 +68,8 @@ public struct SettingsView: View {
         .padding(20)
         .frame(width: 540, height: 480)
         .onAppear {
-            inputDevices = AudioRecorder.availableInputDevices()
+            inputDeviceManager.refresh()
+            migrateSelectionMetadataIfNeeded()
         }
     }
 
@@ -96,10 +97,18 @@ public struct SettingsView: View {
             }
 
             Section(header: Text("Audio Input").font(.headline)) {
-                Picker("Microphone", selection: $settings.audioInputDeviceUID) {
-                    Text("System Default").tag("")
-                    ForEach(inputDevices) { device in
-                        Text(device.isSystemDefault ? "\(device.name) (System Default)" : device.name).tag(device.uid)
+                Picker("Microphone", selection: $settings.audioInputDeviceSelection) {
+                    Text("System Default").tag(AudioInputDeviceSelection.systemDefault)
+
+                    if !settings.audioInputDeviceSelection.isSystemDefault,
+                       !inputDeviceManager.devices.contains(where: { $0.identity == settings.audioInputDeviceSelection }) {
+                        Text("\(settings.audioInputDeviceSelection.name ?? "Selected Microphone") (Unavailable — using System Default)")
+                            .tag(settings.audioInputDeviceSelection)
+                    }
+
+                    ForEach(inputDeviceManager.devices) { device in
+                        Text(device.isSystemDefault ? "\(device.name) (System Default)" : device.name)
+                            .tag(device.identity)
                     }
                 }
 
@@ -131,6 +140,17 @@ public struct SettingsView: View {
                         .foregroundColor(.secondary)
                 }
             }
+        }
+    }
+
+    private func migrateSelectionMetadataIfNeeded() {
+        guard let uid = settings.audioInputDeviceSelection.uid,
+              let currentDevice = inputDeviceManager.devices.first(where: { $0.uid == uid }) else {
+            return
+        }
+
+        if settings.audioInputDeviceSelection != currentDevice.identity {
+            settings.audioInputDeviceSelection = currentDevice.identity
         }
     }
 

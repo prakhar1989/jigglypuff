@@ -97,17 +97,9 @@ final class GeminiServiceIntegrationTests: XCTestCase {
     }
 
     func testMissingAPIKeyThrowsMissingAPIKeyError() async {
-        let prevEnv = getenv("GEMINI_API_KEY").flatMap { String(cString: $0) }
-        unsetenv("GEMINI_API_KEY")
-        defer {
-            if let prev = prevEnv {
-                setenv("GEMINI_API_KEY", prev, 1)
-            }
-        }
-
-        KeychainHelper.shared.deleteAPIKey()
+        let service = GeminiTranscribeService(apiKeyProvider: { nil })
         do {
-            _ = try await GeminiTranscribeService.shared.transcribe(
+            _ = try await service.transcribe(
                 audioData: dummyWAVData,
                 model: .gemini35Transcribe,
                 mode: .smartFlow
@@ -124,53 +116,7 @@ final class GeminiServiceIntegrationTests: XCTestCase {
         }
     }
 
-    // MARK: - Gemini 2.5 Flash GenerateContent Tests
-
-    func testGemini25FlashTranscriptionSuccess() async throws {
-        let expectedTranscript = "Meeting with Sarah tomorrow at 10 AM."
-
-        // Mock URL response
-        URLProtocol.registerClass(MockURLProtocol.self)
-        defer { URLProtocol.unregisterClass(MockURLProtocol.self) }
-
-        MockURLProtocol.requestHandler = { request in
-            XCTAssertEqual(request.httpMethod, "POST")
-            XCTAssertTrue(request.url?.absoluteString.contains("gemini-2.5-flash:generateContent") == true)
-            XCTAssertEqual(request.value(forHTTPHeaderField: "x-goog-api-key"), "test_api_key_12345")
-
-            let responseJSON: [String: Any] = [
-                "candidates": [
-                    [
-                        "content": [
-                            "parts": [
-                                ["text": "\"\(expectedTranscript)\""] // with quotes to test cleaning
-                            ],
-                            "role": "model"
-                        ],
-                        "finishReason": "STOP"
-                    ]
-                ]
-            ]
-            let data = try! JSONSerialization.data(withJSONObject: responseJSON)
-            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!
-            return (response, data)
-        }
-
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [MockURLProtocol.self]
-
-        // Test mode prompt and vocabulary
-        let result = try await GeminiTranscribeService.shared.transcribe(
-            audioData: dummyWAVData,
-            model: .gemini25Flash,
-            mode: .smartFlow,
-            customVocabulary: "Sarah, AcmeCorp"
-        )
-
-        XCTAssertFalse(result.isEmpty)
-    }
-
-    func testGemini25FlashDictationModesPromptGeneration() {
+    func testDictationModesPromptGeneration() {
         // Verify default prompts for all dictation modes
         let modes: [DictationMode] = [.smartFlow, .rawVerbatim, .email, .bulletPoints, .codeTech, .custom]
         for mode in modes {
