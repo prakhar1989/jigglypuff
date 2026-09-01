@@ -305,6 +305,19 @@
       box-shadow: 1px 1px 0px var(--border-dark);
     }
 
+    /* Squishy Jelly Stickers */
+    .sticker-tag, .sticker-key {
+      transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+      cursor: default;
+    }
+
+    .sticker-pink:hover { transform: rotate(-3deg) translateY(-2px); }
+    .sticker-pink:active { transform: rotate(-1deg) scale(0.92); }
+    .sticker-cyan:hover { transform: rotate(3deg) translateY(-2px); }
+    .sticker-cyan:active { transform: rotate(1.5deg) scale(0.92); }
+    .sticker-key:hover { transform: translateY(-2px); }
+    .sticker-key:active { transform: scale(0.92); }
+
     .hero-heading {
       font-family: 'Fredoka', cursive, sans-serif;
       font-size: clamp(28px, 4vw, 50px);
@@ -313,6 +326,7 @@
       letter-spacing: -0.5px;
       color: var(--border-dark);
       word-wrap: break-word;
+      transform: rotate(0.5deg);
     }
 
     .hero-heading .pop-text {
@@ -377,7 +391,7 @@
     }
 
     .btn-download-cartoon:active {
-      transform: translateY(2px) scale(0.99);
+      transform: translateY(2px) scale(0.97);
       box-shadow: 
         0 1px 0px var(--border-dark),
         0 4px 12px rgba(255, 75, 139, 0.3);
@@ -515,6 +529,8 @@
       box-shadow: 
         5px 5px 0px var(--border-dark),
         0 16px 36px rgba(45, 24, 71, 0.1);
+      transform: rotate(-1deg);
+      transition: filter 0.5s ease;
     }
 
     .mascot-header-strip {
@@ -585,10 +601,14 @@
       flex-shrink: 0;
     }
 
-    .mode-btn:hover, .mode-btn:active {
+    .mode-btn:hover {
       background: var(--pink-soft);
       color: var(--border-dark);
       transform: translateY(-1px);
+    }
+
+    .mode-btn:active {
+      transform: translateY(0) scale(0.92);
     }
 
     .mode-btn.active {
@@ -635,6 +655,13 @@
         0 0 12px rgba(255, 101, 163, 0.25),
         2px 2px 0px var(--border-dark);
       display: block;
+      animation: idleBob 2.8s ease-in-out infinite;
+      transition: filter 0.4s ease;
+    }
+
+    @keyframes idleBob {
+      0%, 100% { transform: scale(1) rotate(0deg); }
+      50% { transform: scale(1.045) rotate(-1.5deg); }
     }
 
     .live-sound-pulse {
@@ -649,6 +676,45 @@
     @keyframes spinDashed {
       0% { transform: rotate(0deg); }
       100% { transform: rotate(360deg); }
+    }
+
+    /* Sleepy Easter Egg */
+    .sleep-zzz {
+      position: absolute;
+      top: -26px;
+      right: -6px;
+      font-size: 18px;
+      opacity: 0;
+      pointer-events: none;
+      z-index: 5;
+    }
+
+    .jigglypuff-avatar-wrap.is-sleeping .sleep-zzz {
+      animation: zzzFloat 1.8s ease-in-out infinite;
+    }
+
+    @keyframes zzzFloat {
+      0% { opacity: 0; transform: translateY(8px) scale(0.7) rotate(-12deg); }
+      30% { opacity: 1; }
+      100% { opacity: 0; transform: translateY(-16px) scale(1.15) rotate(10deg); }
+    }
+
+    .jigglypuff-avatar-wrap.is-sleeping {
+      transform: rotate(-7deg) scale(0.98);
+    }
+
+    .jigglypuff-avatar-wrap.is-sleeping .jigglypuff-img {
+      animation: none;
+      filter: grayscale(0.45) brightness(0.94);
+    }
+
+    .jigglypuff-avatar-wrap.is-sleeping .live-sound-pulse {
+      animation-play-state: paused;
+      opacity: 0.15;
+    }
+
+    .mascot-hero-card.is-sleepy {
+      filter: saturate(0.7) brightness(0.96);
     }
 
     .mascot-hud-info {
@@ -821,7 +887,7 @@
     }
 
     .sing-btn:active {
-      transform: translate(1px, 1px);
+      transform: translate(1px, 1px) scale(0.96);
       box-shadow: 1px 1px 0px var(--border-dark);
     }
 
@@ -1167,9 +1233,10 @@
             <!-- Mascot + Live Waveform Card -->
             <div class="mascot-stage-inner" id="mascotStage">
               
-              <div class="jigglypuff-avatar-wrap" id="jigglyAvatar" title="Click or tap Jigglypuff to test!">
+              <div class="jigglypuff-avatar-wrap" id="jigglyAvatar" title="Click or tap Jigglypuff to sing! (5 fast clicks = nap time 💤)">
                 <div class="live-sound-pulse"></div>
                 <img src="assets/logo.png" alt="Singing Jigglypuff Mascot" class="jigglypuff-img">
+                <div class="sleep-zzz">💤</div>
               </div>
 
               <div class="mascot-hud-info">
@@ -1273,7 +1340,12 @@
 
     let currentMode = 'cleanup';
     let isSimulating = false;
+    let isSleeping = false;
     let waveInterval = null;
+    let typeTimer = null;
+    let simGeneration = 0;
+    let clickTimes = [];
+    let sleepAutoWake = null;
 
     // Generate Dynamic Candy Waveform Bars
     const waveformBox = document.getElementById('candyWaveform');
@@ -1309,10 +1381,11 @@
 
     // Run Simulation
     function runSimulation(modeKey) {
-      if (isSimulating) return;
+      if (isSimulating || isSleeping) return;
       isSimulating = true;
       currentMode = modeKey;
       const data = scenarios[modeKey];
+      const gen = ++simGeneration;
 
       const hudStateLabel = document.getElementById('hudStateLabel');
       const hudRecDot = document.getElementById('hudRecDot');
@@ -1336,6 +1409,7 @@
       spawnMusicalNote();
 
       setTimeout(() => {
+        if (gen !== simGeneration) return;
         rawEl.textContent = data.raw;
         jigglyAvatar.style.transform = 'scale(1.04) rotate(3deg)';
 
@@ -1347,6 +1421,7 @@
         animateWaveform(false);
 
         setTimeout(() => {
+          if (gen !== simGeneration) return;
           // 3. Success / Typed phase
           hudStateLabel.textContent = data.status;
           hudStateLabel.style.color = 'var(--green-deep)';
@@ -1363,14 +1438,15 @@
     }
 
     function typeWriter(element, text, onComplete) {
+      clearInterval(typeTimer);
       element.textContent = '';
       let index = 0;
-      const timer = setInterval(() => {
+      typeTimer = setInterval(() => {
         if (index < text.length) {
           element.textContent += text.charAt(index);
           index++;
         } else {
-          clearInterval(timer);
+          clearInterval(typeTimer);
           if (onComplete) onComplete();
         }
       }, 14);
@@ -1396,6 +1472,7 @@
     const modeBtns = document.querySelectorAll('.mode-btn');
     modeBtns.forEach(btn => {
       btn.addEventListener('click', () => {
+        if (isSleeping) wakeJiggly();
         modeBtns.forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         runSimulation(btn.getAttribute('data-mode'));
@@ -1404,32 +1481,116 @@
 
     // Replay / Sing again button
     document.getElementById('replayBtn').addEventListener('click', () => {
+      if (isSleeping) {
+        wakeJiggly();
+        return;
+      }
       runSimulation(currentMode);
     });
 
-    // Clicking / tapping Jigglypuff avatar triggers song
+    // Clicking / tapping Jigglypuff avatar triggers song (5 fast clicks = nap!)
     document.getElementById('jigglyAvatar').addEventListener('click', () => {
+      if (isSleeping) {
+        wakeJiggly();
+        return;
+      }
+      registerAvatarClick();
       runSimulation(currentMode);
     });
+
+    // Easter egg: 5 fast clicks put Jigglypuff to sleep
+    function registerAvatarClick() {
+      const now = Date.now();
+      clickTimes = clickTimes.filter(t => now - t < 2000);
+      clickTimes.push(now);
+      if (clickTimes.length >= 5) {
+        clickTimes = [];
+        putJigglyToSleep();
+      }
+    }
+
+    function putJigglyToSleep() {
+      if (isSleeping) return;
+      isSleeping = true;
+      isSimulating = false;
+      simGeneration++;
+      clearInterval(typeTimer);
+      animateWaveform(false);
+
+      const jigglyAvatar = document.getElementById('jigglyAvatar');
+      jigglyAvatar.style.transform = '';
+      jigglyAvatar.classList.add('is-sleeping');
+      document.querySelector('.mascot-hero-card').classList.add('is-sleepy');
+
+      const hudStateLabel = document.getElementById('hudStateLabel');
+      hudStateLabel.textContent = 'SLEEPING... 💤';
+      hudStateLabel.style.color = 'var(--text-dim)';
+      const hudRecDot = document.getElementById('hudRecDot');
+      hudRecDot.style.background = 'var(--text-dim)';
+      hudRecDot.style.boxShadow = 'none';
+      hudRecDot.style.animation = 'none';
+      document.getElementById('hudTime').textContent = 'zzz';
+
+      showToast('Jigglypuff used Sing! You slept 😴');
+      sleepAutoWake = setTimeout(wakeJiggly, 8000);
+    }
+
+    function wakeJiggly() {
+      if (!isSleeping) return;
+      isSleeping = false;
+      clearTimeout(sleepAutoWake);
+      clickTimes = [];
+
+      const jigglyAvatar = document.getElementById('jigglyAvatar');
+      jigglyAvatar.classList.remove('is-sleeping');
+      document.querySelector('.mascot-hero-card').classList.remove('is-sleepy');
+
+      const hudStateLabel = document.getElementById('hudStateLabel');
+      hudStateLabel.textContent = 'RECORDING (⌥ SPACE)...';
+      hudStateLabel.style.color = 'var(--pink-candy)';
+      const hudRecDot = document.getElementById('hudRecDot');
+      hudRecDot.style.background = 'var(--pink-candy)';
+      hudRecDot.style.boxShadow = '0 0 8px var(--pink-candy)';
+      hudRecDot.style.animation = '';
+      document.getElementById('hudTime').textContent = '00:00.0';
+
+      const data = scenarios[currentMode];
+      document.getElementById('rawSpeechText').textContent = data.raw;
+      document.getElementById('cleanedSpeechText').textContent = data.cleaned;
+      animateWaveform(true);
+      showToast('Jigglypuff woke up! ☀️');
+    }
 
     // Keyboard trigger (Option+Space or Spacebar)
     window.addEventListener('keydown', (e) => {
       if ((e.altKey && e.code === 'Space') || (e.code === 'Space' && e.target === document.body)) {
         e.preventDefault();
+        if (isSleeping) {
+          wakeJiggly();
+          return;
+        }
         runSimulation(currentMode);
       }
     });
 
+    // Toast helper
+    const toast = document.getElementById('toast');
+    let toastTimer = null;
+    function showToast(message) {
+      toast.textContent = message;
+      toast.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toast.classList.remove('show'), 2200);
+    }
+
     // Copy command
     const copyCmdBtn = document.getElementById('copyCmdBtn');
-    const toast = document.getElementById('toast');
     copyCmdBtn.addEventListener('click', () => {
       navigator.clipboard.writeText('xattr -cr /Applications/Jigglypuff.app').then(() => {
         document.getElementById('copyBtnText').textContent = 'COPIED!';
-        toast.classList.add('show');
+        showToast('Copied quarantine command! 🎉');
         setTimeout(() => {
           document.getElementById('copyBtnText').textContent = 'COPY';
-          toast.classList.remove('show');
         }, 2200);
       });
     });
