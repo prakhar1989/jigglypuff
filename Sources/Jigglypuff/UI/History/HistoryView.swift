@@ -4,6 +4,7 @@ import AppKit
 /// Searchable transcription history window
 public struct HistoryView: View {
     @ObservedObject var history = HistoryManager.shared
+    @ObservedObject var settings = SettingsStore.shared
     @State private var searchText = ""
     @State private var selectedFilter: String = "All"
     @State private var copiedItemId: UUID? = nil
@@ -71,12 +72,21 @@ public struct HistoryView: View {
                     Image(systemName: "clock.arrow.circlepath")
                         .font(.system(size: 40))
                         .foregroundColor(.secondary.opacity(0.5))
-                    Text(history.items.isEmpty ? "No dictations yet" : "No matching dictations")
-                        .font(.headline)
-                        .foregroundColor(.secondary)
-                    Text("Use ⌥ Space to dictate anywhere.")
-                        .font(.caption)
-                        .foregroundColor(.secondary.opacity(0.8))
+                    if !settings.saveHistory && history.items.isEmpty {
+                        Text("History Saving Disabled")
+                            .font(.headline)
+                            .foregroundColor(.secondary)
+                        Text("New dictations are not being saved. You can re-enable history in Settings.")
+                            .font(.caption)
+                            .foregroundColor(.secondary.opacity(0.8))
+                    } else {
+                        Text(history.items.isEmpty ? "No dictations yet" : "No matching dictations")
+                            .font(.headline)
+                            .foregroundColor(.secondary)
+                        Text("Use ⌥ Space to dictate anywhere.")
+                            .font(.caption)
+                            .foregroundColor(.secondary.opacity(0.8))
+                    }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {

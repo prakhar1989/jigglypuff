@@ -122,12 +122,16 @@ public struct SettingsView: View {
                     .toggleStyle(.switch)
                 Toggle("Always copy transcript to clipboard", isOn: $settings.copyToClipboardAlways)
                     .toggleStyle(.switch)
+                Toggle("Save transcription history", isOn: $settings.saveHistory)
+                    .toggleStyle(.switch)
                 Toggle("Show floating HUD while recording", isOn: $settings.showFloatingHUD)
                     .toggleStyle(.switch)
                 Toggle("Play sound cues (start, stop, success)", isOn: $settings.playSoundEffects)
                     .toggleStyle(.switch)
             } header: {
                 Text("Behavior & Feedback")
+            } footer: {
+                Text("When disabled, new transcriptions are not saved to your history.")
             }
 
             Section {
@@ -167,7 +171,7 @@ public struct SettingsView: View {
     }
 
     private var appVersion: String {
-        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.2"
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.3"
     }
 
     private func migrateSelectionMetadataIfNeeded() {

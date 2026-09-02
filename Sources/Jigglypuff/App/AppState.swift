@@ -185,14 +185,16 @@ public final class AppState: ObservableObject, HotkeyManagerDelegate {
                 )
 
                 // Log to history
-                let item = TranscriptionItem(
-                    text: transcribed,
-                    duration: recordedDuration,
-                    model: settings.selectedModel.displayName,
-                    mode: settings.selectedDictationMode.displayName,
-                    targetAppName: self.activeAppName
-                )
-                HistoryManager.shared.add(item: item)
+                if settings.saveHistory {
+                    let item = TranscriptionItem(
+                        text: transcribed,
+                        duration: recordedDuration,
+                        model: settings.selectedModel.displayName,
+                        mode: settings.selectedDictationMode.displayName,
+                        targetAppName: self.activeAppName
+                    )
+                    HistoryManager.shared.add(item: item)
+                }
 
                 SoundEffects.shared.playSuccess()
                 self.state = .success(text: transcribed)

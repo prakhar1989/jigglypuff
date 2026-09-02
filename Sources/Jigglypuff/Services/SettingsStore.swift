@@ -242,6 +242,12 @@ public final class SettingsStore: ObservableObject {
         }
     }
 
+    @Published public var saveHistory: Bool {
+        didSet {
+            UserDefaults.standard.set(saveHistory, forKey: "saveHistory")
+        }
+    }
+
     @Published public var hotkeyKeyCode: UInt32 {
         didSet {
             UserDefaults.standard.set(hotkeyKeyCode, forKey: "hotkeyKeyCode")
@@ -311,6 +317,7 @@ public final class SettingsStore: ObservableObject {
         self.copyToClipboardAlways = shouldApplyRecommendedDefaults
             ? false
             : defaults.object(forKey: "copyToClipboardAlways") as? Bool ?? false
+        self.saveHistory = defaults.object(forKey: "saveHistory") as? Bool ?? true
         self.showFloatingHUD = defaults.object(forKey: "showFloatingHUD") as? Bool ?? true
         if let data = UserDefaults.standard.data(forKey: "audioInputDeviceSelection"),
            let selection = try? JSONDecoder().decode(AudioInputDeviceSelection.self, from: data) {

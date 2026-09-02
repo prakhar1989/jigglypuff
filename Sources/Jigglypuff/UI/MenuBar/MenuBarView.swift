@@ -136,11 +136,21 @@ public struct MenuBarView: View {
             // Recent Transcriptions
             if !history.items.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
-                    HStack {
+                    HStack(spacing: 8) {
                         Text("Recent Transcriptions")
                             .font(.caption)
                             .foregroundColor(.secondary)
+
                         Spacer()
+
+                        Button("Clear") {
+                            history.clearAll()
+                        }
+                        .font(.caption2)
+                        .buttonStyle(.plain)
+                        .foregroundColor(.secondary)
+                        .help("Clear transcription history")
+
                         Button("View All") {
                             onOpenHistory()
                         }
@@ -150,32 +160,58 @@ public struct MenuBarView: View {
                     }
 
                     ForEach(history.items.prefix(3)) { item in
-                        Button(action: {
-                            NSPasteboard.general.clearContents()
-                            NSPasteboard.general.setString(item.text, forType: .string)
-                        }) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(item.text)
-                                    .font(.system(size: 11))
-                                    .lineLimit(1)
-                                    .foregroundColor(.primary)
+                        HStack(spacing: 4) {
+                            Button(action: {
+                                NSPasteboard.general.clearContents()
+                                NSPasteboard.general.setString(item.text, forType: .string)
+                            }) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(item.text)
+                                        .font(.system(size: 11))
+                                        .lineLimit(1)
+                                        .foregroundColor(.primary)
 
-                                HStack {
-                                    Text(item.mode)
-                                    Text("•")
-                                    Text(formattedTime(item.timestamp))
+                                    HStack {
+                                        Text(item.mode)
+                                        Text("•")
+                                        Text(formattedTime(item.timestamp))
+                                    }
+                                    .font(.system(size: 9))
+                                    .foregroundColor(.secondary)
                                 }
-                                .font(.system(size: 9))
-                                .foregroundColor(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
                             }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 4)
-                            .background(Color.primary.opacity(0.03))
-                            .cornerRadius(5)
+                            .buttonStyle(.plain)
+                            .help("Click to copy to clipboard")
+
+                            Button(action: {
+                                history.delete(item: item)
+                            }) {
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 8, weight: .bold))
+                                    .foregroundColor(.secondary.opacity(0.6))
+                                    .padding(4)
+                            }
+                            .buttonStyle(.plain)
+                            .help("Delete this item")
                         }
-                        .buttonStyle(.plain)
-                        .help("Click to copy to clipboard")
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 4)
+                        .background(Color.primary.opacity(0.03))
+                        .cornerRadius(5)
+                        .contextMenu {
+                            Button("Copy") {
+                                NSPasteboard.general.clearContents()
+                                NSPasteboard.general.setString(item.text, forType: .string)
+                            }
+                            Button("Delete", role: .destructive) {
+                                history.delete(item: item)
+                            }
+                            Divider()
+                            Button("Clear All History", role: .destructive) {
+                                history.clearAll()
+                            }
+                        }
                     }
                 }
                 Divider()
@@ -233,7 +269,7 @@ public struct MenuBarView: View {
     }
 
     private var appVersion: String {
-        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.2"
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.3"
         return "v\(version)"
     }
 }

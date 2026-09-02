@@ -47,6 +47,7 @@ public final class HistoryManager: ObservableObject {
     }
 
     public func add(item: TranscriptionItem) {
+        guard SettingsStore.shared.saveHistory else { return }
         items.insert(item, at: 0)
         // Keep last 200 items
         if items.count > 200 {
