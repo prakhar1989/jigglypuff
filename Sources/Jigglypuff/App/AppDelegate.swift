@@ -21,6 +21,17 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
 
         print("Jigglypuff initialized successfully.")
 
+        // Present onboarding window on first run
+        if !SettingsStore.shared.hasCompletedOnboarding {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                OnboardingWindowController.shared.show()
+            }
+        } else if ProcessInfo.processInfo.environment["JP_DEBUG_OPEN_ONBOARDING"] == "1" {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                OnboardingWindowController.shared.show()
+            }
+        }
+
         // Diagnostics hook: writes current permission statuses to a temp file so
         // scripts can verify TCC state without UI scripting.
         if ProcessInfo.processInfo.environment["JP_DEBUG_PERMISSIONS"] == "1" {

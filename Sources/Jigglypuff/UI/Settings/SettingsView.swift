@@ -164,6 +164,10 @@ public struct SettingsView: View {
                     Text("Google Gemini")
                         .foregroundColor(.secondary)
                 }
+
+                Button("Open Setup Assistant…") {
+                    OnboardingWindowController.shared.show()
+                }
             } header: {
                 Text("About")
             }
