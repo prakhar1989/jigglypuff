@@ -339,4 +339,17 @@ final class AudioIntegrationTests: XCTestCase {
         XCTAssertTrue(emptyAudio.isEmpty)
         XCTAssertLessThanOrEqual(emptyAudio.count, 44, "Empty audio is <= 44 bytes")
     }
+
+    func testDebugRecordingDisabledByDefault() throws {
+        if ProcessInfo.processInfo.environment["JP_DEBUG_RECORDINGS"] == nil &&
+           ProcessInfo.processInfo.environment["DEBUG_RECORDINGS"] == nil {
+            XCTAssertFalse(AudioRecorder.isDebugRecordingEnabled)
+        }
+    }
+
+    func testDebugRecordingsDirectoryURL() throws {
+        let url = AudioRecorder.debugRecordingsDirectoryURL()
+        XCTAssertNotNil(url)
+        XCTAssertTrue(url?.path.hasSuffix("DebugRecordings") == true)
+    }
 }

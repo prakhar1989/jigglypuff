@@ -238,7 +238,15 @@ public final class AudioRecorder: ObservableObject {
 
     private init() {}
 
-    /// Location used by the temporary diagnostic build to preserve captured WAV files.
+    /// Whether debug WAV recordings are saved to disk.
+    /// Controlled via environment variable `JP_DEBUG_RECORDINGS=1` or `DEBUG_RECORDINGS=1`.
+    public static var isDebugRecordingEnabled: Bool {
+        let env = ProcessInfo.processInfo.environment
+        let flag = env["JP_DEBUG_RECORDINGS"] ?? env["DEBUG_RECORDINGS"]
+        return flag == "1" || flag?.lowercased() == "true" || flag?.lowercased() == "yes"
+    }
+
+    /// Location used to preserve captured WAV files when debug recording is enabled.
     public static func debugRecordingsDirectoryURL() -> URL? {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
             .appendingPathComponent("Jigglypuff", isDirectory: true)
@@ -393,7 +401,9 @@ public final class AudioRecorder: ObservableObject {
         self.audioLevel = 0.0
 
         let wavData = createWAVData(from: rawData, sampleRate: Int(targetSampleRate), channels: 1, bitsPerSample: 16)
-        saveDebugRecording(wavData, pcmByteCount: rawData.count)
+        if Self.isDebugRecordingEnabled {
+            saveDebugRecording(wavData, pcmByteCount: rawData.count)
+        }
         print("[DEBUG-AUDIO] Capture stopped. Converted PCM bytes: \(rawData.count), WAV bytes: \(wavData.count).")
 
         // Keep the existing empty-audio behavior for transcription while preserving
@@ -421,6 +431,7 @@ public final class AudioRecorder: ObservableObject {
     }
 
     private func saveDebugRecording(_ wavData: Data, pcmByteCount: Int) {
+        guard Self.isDebugRecordingEnabled else { return }
         guard let directoryURL = Self.debugRecordingsDirectoryURL() else {
             print("[DEBUG-AUDIO] Could not determine the debug recordings directory.")
             return
