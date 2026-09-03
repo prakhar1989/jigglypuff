@@ -1,5 +1,13 @@
 import SwiftUI
 
+/// PreferenceKey to report the pill's current layout bounds in window coordinates.
+struct PillFramePreferenceKey: PreferenceKey {
+    static let defaultValue: CGRect = .zero
+    static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
+        value = nextValue()
+    }
+}
+
 /// Floating HUD Pill overlay inspired by Wispr Flow.
 public struct HUDOverlayView: View {
     @ObservedObject var appState = AppState.shared
@@ -16,29 +24,38 @@ public struct HUDOverlayView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .background(
-            ZStack {
-                // Glassmorphic translucent blur
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .fill(.ultraThinMaterial)
-                    .shadow(color: Color.black.opacity(0.25), radius: 16, x: 0, y: 8)
-
-                // Subtle glowing border
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .stroke(
-                        LinearGradient(
-                            colors: [
-                                Color.white.opacity(0.3),
-                                Color.white.opacity(0.08)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 1
-                    )
-            }
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .fill(.ultraThinMaterial)
         )
+        .overlay(
+            // Subtle glowing border
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(
+                    LinearGradient(
+                        colors: [
+                            Color.white.opacity(0.3),
+                            Color.white.opacity(0.08)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 1
+                )
+        )
+        .shadow(color: Color.black.opacity(0.18), radius: 16, x: 0, y: 8)
         .frame(minWidth: 180, maxWidth: 460)
         .fixedSize(horizontal: true, vertical: true)
+        .background(
+            GeometryReader { geo in
+                Color.clear.preference(
+                    key: PillFramePreferenceKey.self,
+                    value: geo.frame(in: .global)
+                )
+            }
+        )
+        .onPreferenceChange(PillFramePreferenceKey.self) { frame in
+            HUDOverlayWindow.shared.updatePillFrame(frame)
+        }
         .animation(.spring(response: 0.35, dampingFraction: 0.8), value: appState.state)
     }
 
