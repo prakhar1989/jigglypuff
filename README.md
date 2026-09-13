@@ -22,13 +22,25 @@ Jigglypuff is a menu bar app that types what you say. Press `⌥ Space`, talk, a
 
 ## Install
 
-Download `Jigglypuff.dmg` from [GitHub Releases](https://github.com/prakhar1989/jigglypuff/releases) and drag it to your Applications folder.
-
-The app isn't notarized (no paid Apple Developer account), so macOS will warn you on first launch. Right-click the app and choose **Open**, or run:
+### Homebrew (Recommended)
 
 ```bash
-xattr -cr /Applications/Jigglypuff.app
+brew install prakhar1989/tap/jigglypuff
 ```
+
+*(or `brew tap prakhar1989/tap && brew install jigglypuff`)*
+
+### Manual Download
+
+Download `Jigglypuff.dmg` from [GitHub Releases](https://github.com/prakhar1989/jigglypuff/releases) and drag it to your Applications folder.
+
+---
+
+> **Note on macOS Security:**
+> The app isn't notarized (no paid Apple Developer account), so macOS will warn you on first launch. Right-click the app and choose **Open**, or run:
+> ```bash
+> xattr -cr /Applications/Jigglypuff.app
+> ```
 
 ## Build from source
 
