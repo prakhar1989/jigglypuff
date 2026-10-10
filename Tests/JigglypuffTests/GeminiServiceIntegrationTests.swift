@@ -222,4 +222,187 @@ final class GeminiServiceIntegrationTests: XCTestCase {
 
         XCTAssertEqual(result, expected)
     }
+
+    // MARK: - Live Streaming Protocol & Diff Reconciliation Tests
+
+    func testReconcileDiffAppendAndSelfCorrection() {
+        // Pure append
+        let appendDiff = TextInsertionService.reconcileDiff(
+            from: "Let's meet at",
+            to: "Let's meet at 2"
+        )
+        XCTAssertEqual(appendDiff.backspaces, 0)
+        XCTAssertEqual(appendDiff.suffixToType, " 2")
+
+        // Smart self-correction replacing "2" with "3 PM."
+        let correctionDiff = TextInsertionService.reconcileDiff(
+            from: "Let's meet at 2",
+            to: "Let's meet at 3 PM."
+        )
+        XCTAssertEqual(correctionDiff.backspaces, 1)
+        XCTAssertEqual(correctionDiff.suffixToType, "3 PM.")
+
+        // No-op when strings match
+        let noopDiff = TextInsertionService.reconcileDiff(
+            from: "Hello world",
+            to: "Hello world"
+        )
+        XCTAssertEqual(noopDiff.backspaces, 0)
+        XCTAssertEqual(noopDiff.suffixToType, "")
+
+        // Multi-byte Unicode / Emoji grapheme clusters
+        let emojiDiff = TextInsertionService.reconcileDiff(
+            from: "Status 👋🏻 draft",
+            to: "Status 👋🏻 ready!"
+        )
+        XCTAssertEqual(emojiDiff.backspaces, 5)
+        XCTAssertEqual(emojiDiff.suffixToType, "ready!")
+    }
+
+    @MainActor
+    func testStreamingTextSessionMultiUtteranceReconciliation() {
+        var appliedDiffs: [(backspaces: Int, suffix: String)] = []
+        let session = StreamingTextSession { backspaces, suffix in
+            appliedDiffs.append((backspaces, suffix))
+        }
+
+        // Utterance 1: interim -> self-corrected interim -> final
+        session.updateInterim("let's meet at 2", autoInsert: true)
+        session.updateInterim("let's meet at 3", autoInsert: true)
+        session.commitFinal("let's meet at 3 PM.", autoInsert: true)
+
+        // Utterance 2: interim -> final (automatically prefixed with a separating space)
+        session.updateInterim("sounds good", autoInsert: true)
+        session.commitFinal("sounds good!", autoInsert: true)
+
+        XCTAssertEqual(session.committedText, "let's meet at 3 PM. sounds good!")
+        XCTAssertEqual(session.currentInterimText, "")
+        XCTAssertEqual(session.displayText, "let's meet at 3 PM. sounds good!")
+
+        // Verify the exact sequence of keystroke diffs reconstructed the final text
+        var simulatedTextField = ""
+        for diff in appliedDiffs {
+            if diff.backspaces > 0 {
+                simulatedTextField.removeLast(diff.backspaces)
+            }
+            simulatedTextField.append(diff.suffix)
+        }
+        XCTAssertEqual(simulatedTextField, "let's meet at 3 PM. sounds good!")
+    }
+
+    func testLiveSetupAndAudioPayloads() throws {
+        let setupPayload = GeminiLiveTranscribeSession.buildSetupPayload(
+            mode: .smartFlow,
+            customVocabulary: "Jigglypuff, AVAudioEngine\nGemini"
+        )
+        guard let setup = setupPayload["setup"] as? [String: Any],
+              let model = setup["model"] as? String,
+              let inputConfig = setup["inputAudioTranscription"] as? [String: Any],
+              let mode = inputConfig["mode"] as? String,
+              let vocab = inputConfig["customVocabulary"] as? [String] else {
+            XCTFail("Invalid setup payload structure")
+            return
+        }
+        XCTAssertEqual(model, "models/gemini-3.5-transcribe-live")
+        XCTAssertEqual(mode, "SMART")
+        XCTAssertEqual(vocab, ["Jigglypuff", "AVAudioEngine", "Gemini"])
+
+        let verbatimPayload = GeminiLiveTranscribeSession.buildSetupPayload(
+            mode: .rawVerbatim,
+            customVocabulary: nil
+        )
+        let verbatimInputConfig = (verbatimPayload["setup"] as? [String: Any])?["inputAudioTranscription"] as? [String: Any]
+        XCTAssertEqual(verbatimInputConfig?["mode"] as? String, "VERBATIM")
+        XCTAssertNil(verbatimInputConfig?["customVocabulary"])
+
+        let sampleChunk = Data([0x01, 0x02, 0x03, 0x04])
+        let chunkPayload = GeminiLiveTranscribeSession.buildAudioChunkPayload(pcmData: sampleChunk)
+        let audioObj = (chunkPayload["realtimeInput"] as? [String: Any])?["audio"] as? [String: Any]
+        XCTAssertEqual(audioObj?["mimeType"] as? String, "audio/pcm;rate=16000")
+        XCTAssertEqual(audioObj?["data"] as? String, sampleChunk.base64EncodedString())
+
+        let endPayload = GeminiLiveTranscribeSession.buildAudioStreamEndPayload()
+        let endInput = endPayload["realtimeInput"] as? [String: Any]
+        XCTAssertEqual(endInput?["audioStreamEnd"] as? Bool, true)
+    }
+
+    func testLiveServerEventParsing() throws {
+        let camelCaseJSON = """
+        {
+          "setupComplete": {},
+          "serverContent": {
+            "interimInputTranscription": { "text": "Testing live " },
+            "inputTranscription": { "text": "Testing live transcription." },
+            "turnComplete": true
+          }
+        }
+        """.data(using: .utf8)!
+
+        let events = try GeminiLiveTranscribeSession.parseServerEvents(from: camelCaseJSON)
+        XCTAssertEqual(events, [
+            .setupComplete,
+            .interim("Testing live "),
+            .final("Testing live transcription."),
+            .turnComplete
+        ])
+
+        let snakeCaseJSON = """
+        {
+          "server_content": {
+            "interim_input_transcription": { "text": "hello " },
+            "input_transcription": { "text": "Hello world!" },
+            "turn_complete": true
+          }
+        }
+        """.data(using: .utf8)!
+
+        let snakeEvents = try GeminiLiveTranscribeSession.parseServerEvents(from: snakeCaseJSON)
+        XCTAssertEqual(snakeEvents, [
+            .interim("hello "),
+            .final("Hello world!"),
+            .turnComplete
+        ])
+
+        let generationCompleteJSON = """
+        {
+          "serverContent": {
+            "generationComplete": true
+          }
+        }
+        """.data(using: .utf8)!
+        let genEvents = try GeminiLiveTranscribeSession.parseServerEvents(from: generationCompleteJSON)
+        XCTAssertEqual(genEvents, [.turnComplete])
+    }
+
+    func testAudioBufferStorage100msChunkBatching() {
+        let storage = AudioBufferStorage()
+
+        // Append 2,000 bytes (< 3,200 threshold) -> no full chunk yet
+        let part1 = Data(repeating: 0xAA, count: 2000)
+        let chunks1 = storage.append(part1)
+        XCTAssertTrue(chunks1.isEmpty)
+
+        // Append 5,000 bytes (total pending = 7,000 bytes -> 2 chunks of 3,200 bytes + 600 bytes trailing)
+        let part2 = Data(repeating: 0xBB, count: 5000)
+        let chunks2 = storage.append(part2)
+        XCTAssertEqual(chunks2.count, 2)
+        XCTAssertEqual(chunks2[0].count, 3200)
+        XCTAssertEqual(chunks2[1].count, 3200)
+
+        // Flush remaining on stopRecording
+        let (fullData, trailingChunk) = storage.extractWithTrailingChunkAndReset()
+        XCTAssertEqual(fullData.count, 7000)
+        XCTAssertEqual(trailingChunk.count, 600)
+    }
+
+    func testHUDTailLinesPreviewWordBoundaryTruncation() {
+        let shortText = "This is really cool. I really like how fast this works."
+        XCTAssertEqual(HUDOverlayView.tailLinesPreview(shortText, maxCharacters: 96), shortText)
+
+        let longText = "This is really cool. I really like how fast this works. And it makes sense to me what I'm seeing right now as I keep speaking."
+        let preview = HUDOverlayView.tailLinesPreview(longText, maxCharacters: 60)
+        XCTAssertTrue(preview.hasPrefix("…"))
+        XCTAssertTrue(preview.hasSuffix("what I'm seeing right now as I keep speaking."))
+    }
 }
+

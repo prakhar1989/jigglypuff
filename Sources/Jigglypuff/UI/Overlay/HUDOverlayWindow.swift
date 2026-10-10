@@ -33,7 +33,7 @@ public final class HUDOverlayWindow: NSPanel {
     private var hudHostingView: HUDHostingView<HUDOverlayView>?
 
     private static let defaultWidth: CGFloat = 560
-    private static let defaultHeight: CGFloat = 120
+    private static let defaultHeight: CGFloat = 160
 
     private init() {
         super.init(
@@ -52,6 +52,8 @@ public final class HUDOverlayWindow: NSPanel {
         self.ignoresMouseEvents = false
 
         let hostingView = HUDHostingView(rootView: HUDOverlayView())
+        hostingView.wantsLayer = true
+        hostingView.layer?.backgroundColor = NSColor.clear.cgColor
         self.hudHostingView = hostingView
         self.contentView = hostingView
     }

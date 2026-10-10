@@ -269,7 +269,7 @@ public struct MenuBarView: View {
     }
 
     private var appVersion: String {
-        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.3"
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.4"
         return "v\(version)"
     }
 }

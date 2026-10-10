@@ -37,11 +37,16 @@ public final class AppState: ObservableObject, HotkeyManagerDelegate {
     @Published public var lastTranscribedText: String = ""
     @Published public var lastInsertionResult: TextInsertionService.InsertionResult = .inserted
     @Published public var activeAppName: String? = nil
+    @Published public var liveStreamingText: String = ""
 
     private var durationTimer: Timer?
     private var recordingStartTime: Date?
     private var dismissTimer: Timer?
     private var cancellables = Set<AnyCancellable>()
+    private var liveSession: GeminiLiveTranscribeSession?
+    private var streamingTextSession: StreamingTextSession?
+    private var liveEventStreamTask: Task<Void, Never>?
+    private var liveSessionErrorMessage: String?
 
     private init() {
         // Bind audio level from recorder
@@ -115,8 +120,55 @@ public final class AppState: ObservableObject, HotkeyManagerDelegate {
             return
         }
 
+        self.liveStreamingText = ""
+        self.liveSessionErrorMessage = nil
+        self.liveEventStreamTask?.cancel()
+        self.liveEventStreamTask = nil
+        self.liveSession = nil
+        self.streamingTextSession = nil
+
+        let settings = SettingsStore.shared
+        let shouldStreamLive = settings.enableLiveStreaming || settings.selectedModel == .gemini35TranscribeLive
+
+        if shouldStreamLive,
+           let apiKey = KeychainHelper.shared.getAPIKey()?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !apiKey.isEmpty {
+            let textSession = StreamingTextSession()
+            self.streamingTextSession = textSession
+
+            let session = GeminiLiveTranscribeSession(
+                apiKey: apiKey,
+                mode: settings.selectedDictationMode,
+                customVocabulary: settings.customVocabulary
+            )
+            self.liveSession = session
+            self.liveEventStreamTask = Task { [weak self] in
+                do {
+                    let stream = try await session.start()
+                    for try await event in stream {
+                        await MainActor.run {
+                            self?.handleLiveTranscriptEvent(event, textSession: textSession)
+                        }
+                    }
+                } catch {
+                    await MainActor.run {
+                        print("Jigglypuff: Live transcription WebSocket error: \(error.localizedDescription)")
+                        self?.liveSessionErrorMessage = error.localizedDescription
+                    }
+                }
+            }
+        }
+
         do {
-            try AudioRecorder.shared.startRecording()
+            if let session = self.liveSession {
+                try AudioRecorder.shared.startRecording { chunk in
+                    Task {
+                        await session.sendAudioChunk(chunk)
+                    }
+                }
+            } else {
+                try AudioRecorder.shared.startRecording()
+            }
             SoundEffects.shared.playStart()
 
             let start = Date()
@@ -136,6 +188,13 @@ public final class AppState: ObservableObject, HotkeyManagerDelegate {
 
             HUDOverlayWindow.shared.show()
         } catch {
+            self.liveEventStreamTask?.cancel()
+            self.liveEventStreamTask = nil
+            if let activeSession = self.liveSession {
+                self.liveSession = nil
+                self.streamingTextSession = nil
+                Task { await activeSession.close() }
+            }
             self.state = .error(message: "Audio error: \(error.localizedDescription)")
             SoundEffects.shared.playError()
             scheduleAutoDismiss(after: 4.5)
@@ -153,11 +212,56 @@ public final class AppState: ObservableObject, HotkeyManagerDelegate {
         let audioData = AudioRecorder.shared.stopRecording()
         print("Jigglypuff: Recording finished (\(String(format: "%.1f", recordedDuration))s). Captured WAV payload: \(audioData.count) bytes.")
 
+        let activeLiveSession = self.liveSession
+        let activeTextSession = self.streamingTextSession
+        let activeEventTask = self.liveEventStreamTask
+        self.liveSession = nil
+        self.streamingTextSession = nil
+        self.liveEventStreamTask = nil
+
         self.state = .transcribing
 
         Task {
+            let settings = SettingsStore.shared
+
+            if let liveSession = activeLiveSession, let textSession = activeTextSession {
+                await liveSession.finishAudioStream(timeoutSeconds: 2.5)
+                if let eventTask = activeEventTask {
+                    _ = await eventTask.result
+                }
+
+                let (streamedText, insertionResult) = textSession.finalizeSession(
+                    autoInsert: settings.autoInsertText,
+                    copyToClipboardAlways: settings.copyToClipboardAlways
+                )
+                self.liveStreamingText = ""
+
+                if !streamedText.isEmpty {
+                    print("Jigglypuff: Live streamed result length: \(streamedText.count) characters: '\(streamedText)'")
+                    self.lastTranscribedText = streamedText
+                    self.lastInsertionResult = insertionResult
+
+                    if settings.saveHistory {
+                        let item = TranscriptionItem(
+                            text: streamedText,
+                            duration: recordedDuration,
+                            model: TranscribeModel.gemini35TranscribeLive.displayName,
+                            mode: settings.selectedDictationMode.displayName,
+                            targetAppName: self.activeAppName
+                        )
+                        HistoryManager.shared.add(item: item)
+                    }
+
+                    SoundEffects.shared.playSuccess()
+                    self.state = .success(text: streamedText)
+                    self.scheduleAutoDismiss(after: 1.8)
+                    return
+                }
+
+                print("Jigglypuff: Live session ended with no streamed text; falling back to batch transcription.")
+            }
+
             do {
-                let settings = SettingsStore.shared
                 let transcribed = try await GeminiTranscribeService.shared.transcribe(
                     audioData: audioData,
                     model: settings.selectedModel,
@@ -210,9 +314,36 @@ public final class AppState: ObservableObject, HotkeyManagerDelegate {
     public func cancelRecording() {
         durationTimer?.invalidate()
         durationTimer = nil
+        self.liveEventStreamTask?.cancel()
+        self.liveEventStreamTask = nil
+        if let activeLiveSession = self.liveSession {
+            self.liveSession = nil
+            self.streamingTextSession = nil
+            Task {
+                await activeLiveSession.close()
+            }
+        }
+        self.liveStreamingText = ""
         AudioRecorder.shared.cancelRecording()
         self.state = .idle
         HUDOverlayWindow.shared.hide()
+    }
+
+    private func handleLiveTranscriptEvent(_ event: LiveTranscriptEvent, textSession: StreamingTextSession) {
+        let autoInsert = SettingsStore.shared.autoInsertText
+
+        switch event {
+        case .setupComplete:
+            print("Jigglypuff: Live transcription WebSocket setupComplete.")
+        case .interim(let text):
+            textSession.updateInterim(text, autoInsert: autoInsert)
+            self.liveStreamingText = textSession.displayText
+        case .final(let text):
+            textSession.commitFinal(text, autoInsert: autoInsert)
+            self.liveStreamingText = textSession.displayText
+        case .turnComplete:
+            break
+        }
     }
 
     private func scheduleAutoDismiss(after delay: TimeInterval) {
