@@ -362,6 +362,16 @@ final class GeminiServiceIntegrationTests: XCTestCase {
             .final("Hello world!"),
             .turnComplete
         ])
+
+        let generationCompleteJSON = """
+        {
+          "serverContent": {
+            "generationComplete": true
+          }
+        }
+        """.data(using: .utf8)!
+        let genEvents = try GeminiLiveTranscribeSession.parseServerEvents(from: generationCompleteJSON)
+        XCTAssertEqual(genEvents, [.turnComplete])
     }
 
     func testAudioBufferStorage100msChunkBatching() {

@@ -27,6 +27,8 @@ public actor GeminiLiveTranscribeSession {
     private var isSetupComplete: Bool = false
     private var isFinishing: Bool = false
     private var isClosed: Bool = false
+    private var hasPendingUtterance: Bool = false
+    private var hasReceivedFinal: Bool = false
     private var preSetupAudioQueue: [Data] = []
 
     private var eventContinuation: AsyncThrowingStream<LiveTranscriptEvent, Error>.Continuation?
@@ -119,14 +121,19 @@ public actor GeminiLiveTranscribeSession {
             }
         }
 
-        // Wait for the final inputTranscription / turnComplete or until timeout elapses
+        // Wait for the final inputTranscription / turnComplete or until timeout elapses.
+        // If an utterance was already finalized by server VAD during a pause before stopRecording()
+        // and no new interim speech is pending, use a short grace window instead of waiting the full timeout.
         if !isClosed {
+            let effectiveTimeout = (hasReceivedFinal && !hasPendingUtterance)
+                ? min(timeoutSeconds, 0.3)
+                : timeoutSeconds
             await withTaskGroup(of: Void.self) { group in
                 group.addTask {
                     await self.waitForFinalTurn()
                 }
                 group.addTask {
-                    try? await Task.sleep(nanoseconds: UInt64(timeoutSeconds * 1_000_000_000))
+                    try? await Task.sleep(nanoseconds: UInt64(effectiveTimeout * 1_000_000_000))
                     await self.resumeFinishWaitIfNeeded()
                 }
                 await group.next()
@@ -234,14 +241,18 @@ public actor GeminiLiveTranscribeSession {
                     case .setupComplete:
                         await markSetupCompleteAndFlushQueue()
                     case .interim(let text):
+                        hasPendingUtterance = true
                         eventContinuation?.yield(.interim(text))
                     case .final(let text):
+                        hasPendingUtterance = false
+                        hasReceivedFinal = true
                         eventContinuation?.yield(.final(text))
                         if isFinishing {
                             // Give a tiny window for any trailing events, then complete
                             resumeFinishWaitIfNeeded()
                         }
                     case .turnComplete:
+                        hasPendingUtterance = false
                         eventContinuation?.yield(.turnComplete)
                         if isFinishing {
                             resumeFinishWaitIfNeeded()
@@ -358,9 +369,13 @@ public actor GeminiLiveTranscribeSession {
                 }
             }
 
-            // 2d. Turn completion signal
-            if let turnComplete = (serverContent["turnComplete"] as? Bool) ?? (serverContent["turn_complete"] as? Bool),
-               turnComplete {
+            // 2d. Turn / generation completion signal
+            let isTurnComplete = (serverContent["turnComplete"] as? Bool)
+                ?? (serverContent["turn_complete"] as? Bool)
+                ?? (serverContent["generationComplete"] as? Bool)
+                ?? (serverContent["generation_complete"] as? Bool)
+                ?? false
+            if isTurnComplete {
                 events.append(.turnComplete)
             }
         }

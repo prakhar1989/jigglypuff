@@ -105,7 +105,7 @@ public struct OnboardingView: View {
                 }
 
                 // Playful sticker badge
-                Text("v0.3 • macOS")
+                Text("v0.4 • macOS")
                     .font(.system(size: 11, weight: .bold, design: .monospaced))
                     .foregroundColor(CandyTheme.plumDark)
                     .padding(.horizontal, 8)
