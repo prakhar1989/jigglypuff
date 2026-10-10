@@ -4,27 +4,57 @@ import Accelerate
 import CoreAudio
 import AudioUnit
 
-private final class AudioBufferStorage: @unchecked Sendable {
+final class AudioBufferStorage: @unchecked Sendable {
+    static let defaultStreamingChunkByteSize = 3200 // 100ms at 16kHz, 16-bit mono (1,600 samples * 2 bytes)
+
     private var lock = os_unfair_lock_s()
     private var data: Data = Data()
+    private var pendingStreamingChunk: Data = Data()
+    let streamingChunkByteSize: Int
 
-    func append(_ chunk: Data) {
+    init(streamingChunkByteSize: Int = AudioBufferStorage.defaultStreamingChunkByteSize) {
+        self.streamingChunkByteSize = max(2, streamingChunkByteSize)
+    }
+
+    @discardableResult
+    func append(_ chunk: Data) -> [Data] {
         os_unfair_lock_lock(&lock)
         data.append(chunk)
+        pendingStreamingChunk.append(chunk)
+
+        var readyChunks: [Data] = []
+        while pendingStreamingChunk.count >= streamingChunkByteSize {
+            let slice = pendingStreamingChunk.prefix(streamingChunkByteSize)
+            readyChunks.append(Data(slice))
+            pendingStreamingChunk.removeFirst(streamingChunkByteSize)
+        }
         os_unfair_lock_unlock(&lock)
+        return readyChunks
     }
 
     func extractAndReset() -> Data {
         os_unfair_lock_lock(&lock)
         let result = data
         data = Data()
+        pendingStreamingChunk = Data()
         os_unfair_lock_unlock(&lock)
         return result
+    }
+
+    func extractWithTrailingChunkAndReset() -> (fullData: Data, trailingChunk: Data) {
+        os_unfair_lock_lock(&lock)
+        let result = data
+        let trailing = pendingStreamingChunk
+        data = Data()
+        pendingStreamingChunk = Data()
+        os_unfair_lock_unlock(&lock)
+        return (result, trailing)
     }
 
     func reset() {
         os_unfair_lock_lock(&lock)
         data = Data()
+        pendingStreamingChunk = Data()
         os_unfair_lock_unlock(&lock)
     }
 
@@ -235,6 +265,7 @@ public final class AudioRecorder: ObservableObject {
     private var inputNode: AVAudioInputNode?
     private let bufferStorage = AudioBufferStorage()
     private let targetSampleRate: Double = 16000.0
+    private var onPCMChunk: (@Sendable (Data) -> Void)?
 
     private init() {}
 
@@ -254,9 +285,11 @@ public final class AudioRecorder: ObservableObject {
     }
 
     /// Starts recording audio from default or configured input device.
-    public func startRecording() throws {
+    /// - Parameter onPCMChunk: Optional callback invoked with ~100ms (3,200-byte) 16kHz 16-bit mono PCM chunks.
+    public func startRecording(onPCMChunk: (@Sendable (Data) -> Void)? = nil) throws {
         stopEngine()
         bufferStorage.reset()
+        self.onPCMChunk = onPCMChunk
 
         let engine = AVAudioEngine()
         let input = engine.inputNode
@@ -340,7 +373,7 @@ public final class AudioRecorder: ObservableObject {
         input.installTap(onBus: 0,
                          bufferSize: bufferSize,
                          format: nil,
-                         block: makeTapHandler(converter: converter, storage: storage))
+                         block: makeTapHandler(converter: converter, storage: storage, onPCMChunk: onPCMChunk))
 
         engine.prepare()
         do {
@@ -379,11 +412,17 @@ public final class AudioRecorder: ObservableObject {
     /// Builds the audio tap callback in a nonisolated context so the returned closure
     /// does not inherit MainActor isolation (see note at call site).
     nonisolated private func makeTapHandler(converter: ResilientAudioConverter,
-                                            storage: AudioBufferStorage) -> AVAudioNodeTapBlock {
+                                            storage: AudioBufferStorage,
+                                            onPCMChunk: (@Sendable (Data) -> Void)?) -> AVAudioNodeTapBlock {
         return { [weak self] buffer, _ in
             let (pcmData, level) = converter.process(buffer: buffer)
             if let pcmData = pcmData {
-                storage.append(pcmData)
+                let readyChunks = storage.append(pcmData)
+                if let onPCMChunk = onPCMChunk {
+                    for chunk in readyChunks {
+                        onPCMChunk(chunk)
+                    }
+                }
             }
             Task { @MainActor [weak self] in
                 self?.audioLevel = level
@@ -395,7 +434,11 @@ public final class AudioRecorder: ObservableObject {
     public func stopRecording() -> Data {
         stopEngine()
 
-        let rawData = bufferStorage.extractAndReset()
+        let (rawData, trailingChunk) = bufferStorage.extractWithTrailingChunkAndReset()
+        if !trailingChunk.isEmpty, let onPCMChunk = self.onPCMChunk {
+            onPCMChunk(trailingChunk)
+        }
+        self.onPCMChunk = nil
 
         self.isRecording = false
         self.audioLevel = 0.0
@@ -415,6 +458,7 @@ public final class AudioRecorder: ObservableObject {
     public func cancelRecording() {
         stopEngine()
         bufferStorage.reset()
+        self.onPCMChunk = nil
         self.isRecording = false
         self.audioLevel = 0.0
     }

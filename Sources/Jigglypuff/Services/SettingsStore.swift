@@ -32,13 +32,16 @@ public struct AudioInputDeviceSelection: Codable, Hashable, Sendable {
 /// Supported Gemini transcription models
 public enum TranscribeModel: String, CaseIterable, Identifiable, Codable, Sendable {
     case gemini35Transcribe = "gemini-3.5-transcribe"
+    case gemini35TranscribeLive = "gemini-3.5-transcribe-live"
 
     public var id: String { rawValue }
 
     public var displayName: String {
         switch self {
         case .gemini35Transcribe:
-            return "Gemini 3.5 Transcribe (Recommended)"
+            return "Gemini 3.5 Transcribe (Batch)"
+        case .gemini35TranscribeLive:
+            return "Gemini 3.5 Transcribe Live (Streaming)"
         }
     }
 
@@ -46,6 +49,8 @@ public enum TranscribeModel: String, CaseIterable, Identifiable, Codable, Sendab
         switch self {
         case .gemini35Transcribe:
             return "Google's dedicated speech-to-text model with native smart self-correction, disfluency cleanup, and custom vocabulary support (Interactions API)."
+        case .gemini35TranscribeLive:
+            return "Real-time bidirectional speech-to-text streaming over the Gemini Live API WebSocket with word-by-word interim updates and smart self-correction."
         }
     }
 }
@@ -236,6 +241,12 @@ public final class SettingsStore: ObservableObject {
         }
     }
 
+    @Published public var enableLiveStreaming: Bool {
+        didSet {
+            UserDefaults.standard.set(enableLiveStreaming, forKey: "enableLiveStreaming")
+        }
+    }
+
     @Published public var copyToClipboardAlways: Bool {
         didSet {
             UserDefaults.standard.set(copyToClipboardAlways, forKey: "copyToClipboardAlways")
@@ -302,8 +313,8 @@ public final class SettingsStore: ObservableObject {
 
         self.apiKey = KeychainHelper.shared.getAPIKey() ?? ""
 
-        let modelRaw = UserDefaults.standard.string(forKey: "selectedModel") ?? TranscribeModel.gemini35Transcribe.rawValue
-        self.selectedModel = TranscribeModel(rawValue: modelRaw) ?? .gemini35Transcribe
+        let modelRaw = UserDefaults.standard.string(forKey: "selectedModel") ?? TranscribeModel.gemini35TranscribeLive.rawValue
+        self.selectedModel = TranscribeModel(rawValue: modelRaw) ?? .gemini35TranscribeLive
 
         let modeRaw = shouldApplyRecommendedDefaults
             ? DictationMode.smartFlow.rawValue
@@ -320,6 +331,7 @@ public final class SettingsStore: ObservableObject {
 
         self.playSoundEffects = defaults.object(forKey: "playSoundEffects") as? Bool ?? true
         self.autoInsertText = defaults.object(forKey: "autoInsertText") as? Bool ?? true
+        self.enableLiveStreaming = defaults.object(forKey: "enableLiveStreaming") as? Bool ?? true
         self.copyToClipboardAlways = shouldApplyRecommendedDefaults
             ? false
             : defaults.object(forKey: "copyToClipboardAlways") as? Bool ?? false

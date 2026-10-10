@@ -67,58 +67,70 @@ public struct HUDOverlayView: View {
 
         case .recording(let duration):
             // Recording State
-            HStack(spacing: 10) {
-                // Pulsing red mic indicator
-                ZStack {
-                    Circle()
-                        .fill(Color.red.opacity(0.3))
-                        .frame(width: 20, height: 20)
-                        .scaleEffect(isPulsing ? 1.3 : 0.9)
-                        .opacity(isPulsing ? 0.0 : 0.8)
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 10) {
+                    // Pulsing red mic indicator
+                    ZStack {
+                        Circle()
+                            .fill(Color.red.opacity(0.3))
+                            .frame(width: 20, height: 20)
+                            .scaleEffect(isPulsing ? 1.3 : 0.9)
+                            .opacity(isPulsing ? 0.0 : 0.8)
 
-                    Circle()
-                        .fill(Color.red)
-                        .frame(width: 9, height: 9)
-                }
-                .onAppear {
-                    withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
-                        isPulsing = true
+                        Circle()
+                            .fill(Color.red)
+                            .frame(width: 9, height: 9)
                     }
+                    .onAppear {
+                        withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
+                            isPulsing = true
+                        }
+                    }
+
+                    // Live Audio Waveform
+                    WaveformView(audioLevel: appState.audioLevel, barCount: 9)
+
+                    // Recording Timer
+                    Text(formatDuration(duration))
+                        .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                        .foregroundColor(.primary)
+
+                    // Active Mode Badge
+                    HStack(spacing: 4) {
+                        Image(systemName: settings.selectedDictationMode.iconName)
+                            .font(.system(size: 10))
+                        Text(settings.selectedDictationMode.displayName)
+                            .font(.system(size: 11, weight: .medium))
+                    }
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color.primary.opacity(0.06))
+                    .cornerRadius(6)
+
+                    // Cancel Button
+                    Button(action: {
+                        appState.cancelRecording()
+                    }) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(.secondary)
+                            .frame(width: 18, height: 18)
+                            .background(Color.primary.opacity(0.08))
+                            .clipShape(Circle())
+                    }
+                    .buttonStyle(.plain)
                 }
 
-                // Live Audio Waveform
-                WaveformView(audioLevel: appState.audioLevel, barCount: 9)
-
-                // Recording Timer
-                Text(formatDuration(duration))
-                    .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                    .foregroundColor(.primary)
-
-                // Active Mode Badge
-                HStack(spacing: 4) {
-                    Image(systemName: settings.selectedDictationMode.iconName)
-                        .font(.system(size: 10))
-                    Text(settings.selectedDictationMode.displayName)
-                        .font(.system(size: 11, weight: .medium))
+                if !appState.liveStreamingText.isEmpty {
+                    Text(appState.liveStreamingText)
+                        .font(.system(size: 11.5, weight: .regular))
+                        .foregroundColor(.primary.opacity(0.88))
+                        .lineLimit(2)
+                        .truncationMode(.head)
+                        .frame(maxWidth: 380, alignment: .leading)
+                        .transition(.opacity)
                 }
-                .foregroundColor(.secondary)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(Color.primary.opacity(0.06))
-                .cornerRadius(6)
-
-                // Cancel Button
-                Button(action: {
-                    appState.cancelRecording()
-                }) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(.secondary)
-                        .frame(width: 18, height: 18)
-                        .background(Color.primary.opacity(0.08))
-                        .clipShape(Circle())
-                }
-                .buttonStyle(.plain)
             }
 
         case .transcribing:
@@ -128,7 +140,11 @@ public struct HUDOverlayView: View {
                     .controlSize(.small)
                     .scaleEffect(0.85)
 
-                Text("Transcribing with \(settings.selectedModel.rawValue)...")
+                Text(
+                    !appState.liveStreamingText.isEmpty
+                        ? "Finalizing live transcript..."
+                        : "Transcribing with \(settings.selectedModel.rawValue)..."
+                )
                     .font(.system(size: 13, weight: .medium))
                     .foregroundColor(.primary)
             }

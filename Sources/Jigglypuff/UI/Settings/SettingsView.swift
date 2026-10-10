@@ -118,6 +118,11 @@ public struct SettingsView: View {
             }
 
             Section {
+                Toggle("Stream text live as you speak", isOn: $settings.enableLiveStreaming)
+                    .toggleStyle(.switch)
+                    .onChange(of: settings.enableLiveStreaming) { _, isLive in
+                        settings.selectedModel = isLive ? .gemini35TranscribeLive : .gemini35Transcribe
+                    }
                 Toggle("Auto-insert transcript into focused app", isOn: $settings.autoInsertText)
                     .toggleStyle(.switch)
                 Toggle("Always copy transcript to clipboard", isOn: $settings.copyToClipboardAlways)
@@ -131,7 +136,7 @@ public struct SettingsView: View {
             } header: {
                 Text("Behavior & Feedback")
             } footer: {
-                Text("When disabled, new transcriptions are not saved to your history.")
+                Text("When live streaming is enabled, words are typed word-by-word as you speak and self-corrections are updated in place.")
             }
 
             Section {
@@ -251,6 +256,9 @@ public struct SettingsView: View {
                     ForEach(TranscribeModel.allCases) { model in
                         Text(model.displayName).tag(model)
                     }
+                }
+                .onChange(of: settings.selectedModel) { _, model in
+                    settings.enableLiveStreaming = (model == .gemini35TranscribeLive)
                 }
             } header: {
                 Text("Transcription Model")
