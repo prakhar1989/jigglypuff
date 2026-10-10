@@ -394,5 +394,15 @@ final class GeminiServiceIntegrationTests: XCTestCase {
         XCTAssertEqual(fullData.count, 7000)
         XCTAssertEqual(trailingChunk.count, 600)
     }
+
+    func testHUDTailLinesPreviewWordBoundaryTruncation() {
+        let shortText = "This is really cool. I really like how fast this works."
+        XCTAssertEqual(HUDOverlayView.tailLinesPreview(shortText, maxCharacters: 96), shortText)
+
+        let longText = "This is really cool. I really like how fast this works. And it makes sense to me what I'm seeing right now as I keep speaking."
+        let preview = HUDOverlayView.tailLinesPreview(longText, maxCharacters: 60)
+        XCTAssertTrue(preview.hasPrefix("…"))
+        XCTAssertTrue(preview.hasSuffix("what I'm seeing right now as I keep speaking."))
+    }
 }
 
